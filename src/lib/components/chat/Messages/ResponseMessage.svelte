@@ -67,6 +67,7 @@
 	import FullHeightIframe from '$lib/components/common/FullHeightIframe.svelte';
 	import OutputEditView from './OutputEditView.svelte';
 	import { getOutputText, replaceOutputMessageText, type OutputItem } from './structuredOutput';
+	import { snapshotResponseMessage } from './outputWindow';
 
 	interface MessageType {
 		user_id?: string;
@@ -127,7 +128,7 @@
 	export let selectedModels = [];
 
 	let messageSource = history.messages[messageId];
-	let message: MessageType = structuredClone(messageSource);
+	let message: MessageType = snapshotResponseMessage(messageSource);
 	$: if (history.messages) {
 		const source = history.messages[messageId];
 		if (source) {
@@ -135,16 +136,16 @@
 			// Responses streams update output even when legacy content is unchanged.
 			if (source !== messageSource) {
 				messageSource = source;
-				message = structuredClone(source);
+				message = snapshotResponseMessage(source);
 			} else if (
 				message.content !== source.content ||
 				message.done !== source.done ||
 				message.output?.length !== source.output?.length
 			) {
-				message = structuredClone(source);
+				message = snapshotResponseMessage(source);
 			} else if (!equal(message, source)) {
 				// Slow path: full comparison for infrequent changes (sources, annotations, status, etc.)
-				message = structuredClone(source);
+				message = snapshotResponseMessage(source);
 			}
 		}
 	}

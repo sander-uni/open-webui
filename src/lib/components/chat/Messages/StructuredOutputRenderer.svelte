@@ -8,8 +8,14 @@
 
 	import Markdown from './Markdown.svelte';
 	import ConsecutiveDetailsGroup from './Markdown/ConsecutiveDetailsGroup.svelte';
+	import ToolChainPager from './ToolChainPager.svelte';
 	import {
-		buildOutputDisplayItems,
+		OUTPUT_PAGE_SIZE,
+		selectOutputWindow,
+		buildWindowDisplayItems,
+		getOutputDetailKey
+	} from './outputWindow';
+	import {
 		type OutputDetailToken,
 		type OutputDisplayItem,
 		type OutputItem
@@ -67,8 +73,23 @@
 		compactPreview ? 'text-xs' : 'text-[0.9375rem]'
 	} text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition`;
 
-	$: displayItems = buildOutputDisplayItems(output) as OutputDisplayItem[];
+	let visibleSteps = OUTPUT_PAGE_SIZE;
+	let windowId = '';
+	$: if (windowId !== `${chatId}:${messageId}:${id}`) {
+		windowId = `${chatId}:${messageId}:${id}`;
+		visibleSteps = OUTPUT_PAGE_SIZE;
+	}
+	$: outputWindow = selectOutputWindow(output, visibleSteps);
+	$: displayItems = buildWindowDisplayItems(outputWindow.output) as OutputDisplayItem[];
 </script>
+
+{#key windowId}
+	<ToolChainPager
+		totalSteps={outputWindow.totalSteps}
+		hiddenSteps={outputWindow.hiddenSteps}
+		bind:visibleSteps
+	/>
+{/key}
 
 {#each displayItems as displayItem (displayItem.id)}
 	{#if displayItem.type === 'message'}
@@ -111,7 +132,7 @@
 			onResolve={resolveToolCall}
 		>
 			<div slot="content">
-				{#each displayItem.tokens as detailToken, detailIndex}
+				{#each displayItem.tokens as detailToken, detailIndex (getOutputDetailKey(detailToken, detailIndex))}
 					{#if detailToken.attributes?.type === 'tool_calls'}
 						<ToolCallDisplay
 							id={`${id}-${displayItem.id}-${detailIndex}-tool-call`}
