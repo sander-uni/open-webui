@@ -19,7 +19,7 @@
 	export let strokeWidth = '2';
 </script>
 
-{#if id === 'general'}
+{#if id === 'general' || id === 'custom-settings'}
 	<SettingsAlt {className} {strokeWidth} />
 {:else if id === 'authentication'}
 	<Lock {className} {strokeWidth} />

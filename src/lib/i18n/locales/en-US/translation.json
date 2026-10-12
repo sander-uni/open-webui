@@ -3872,5 +3872,10 @@
 	"YouTube": "",
 	"YouTube video player": "",
 	"Zoom in": "",
-	"Zoom out": ""
+	"Zoom out": "",
+	"settings.admin.custom.title": "Custom Settings",
+	"settings.admin.custom.toolChainDisplay.label": "Tool-chain display",
+	"settings.admin.custom.enabled.label": "Paginate tool chains",
+	"settings.admin.custom.pageSize.label": "Steps per page",
+	"settings.admin.custom.autoLoad.label": "Load earlier steps automatically when scrolling up"
 }

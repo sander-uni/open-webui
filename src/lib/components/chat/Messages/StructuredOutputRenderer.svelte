@@ -3,13 +3,20 @@
 	import ToolCallDisplay from '$lib/components/common/ToolCallDisplay.svelte';
 	import TerminalOutputFile from './TerminalOutputFile.svelte';
 	import { resolveChatMessageToolCall } from '$lib/apis/chats';
-	import { settings } from '$lib/stores';
+	import { config, settings } from '$lib/stores';
+	import { getToolChainDisplaySettings } from '$lib/utils/custom-settings';
 	import { toast } from 'svelte-sonner';
 
 	import Markdown from './Markdown.svelte';
 	import ConsecutiveDetailsGroup from './Markdown/ConsecutiveDetailsGroup.svelte';
+	import ToolChainPager from './ToolChainPager.svelte';
 	import {
-		buildOutputDisplayItems,
+		OUTPUT_PAGE_SIZE,
+		selectOutputWindow,
+		buildWindowDisplayItems,
+		getOutputDetailKey
+	} from './outputWindow';
+	import {
 		type OutputDetailToken,
 		type OutputDisplayItem,
 		type OutputItem
@@ -67,8 +74,29 @@
 		compactPreview ? 'text-xs' : 'text-[0.9375rem]'
 	} text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition`;
 
-	$: displayItems = buildOutputDisplayItems(output) as OutputDisplayItem[];
+	let visibleSteps = OUTPUT_PAGE_SIZE;
+	let windowId = '';
+	$: displaySettings = getToolChainDisplaySettings($config?.custom_settings);
+	$: nextWindowId = `${chatId}:${messageId}:${id}:${displaySettings.enabled}:${displaySettings.page_size}`;
+	$: if (windowId !== nextWindowId) {
+		windowId = nextWindowId;
+		visibleSteps = displaySettings.page_size;
+	}
+	$: outputWindow = selectOutputWindow(output, displaySettings.enabled ? visibleSteps : Infinity);
+	$: displayItems = buildWindowDisplayItems(outputWindow.output) as OutputDisplayItem[];
 </script>
+
+{#key windowId}
+	{#if displaySettings.enabled}
+		<ToolChainPager
+			totalSteps={outputWindow.totalSteps}
+			hiddenSteps={outputWindow.hiddenSteps}
+			pageSize={displaySettings.page_size}
+			autoLoad={displaySettings.auto_load}
+			bind:visibleSteps
+		/>
+	{/if}
+{/key}
 
 {#each displayItems as displayItem (displayItem.id)}
 	{#if displayItem.type === 'message'}
@@ -111,7 +139,7 @@
 			onResolve={resolveToolCall}
 		>
 			<div slot="content">
-				{#each displayItem.tokens as detailToken, detailIndex}
+				{#each displayItem.tokens as detailToken, detailIndex (getOutputDetailKey(detailToken, detailIndex))}
 					{#if detailToken.attributes?.type === 'tool_calls'}
 						<ToolCallDisplay
 							id={`${id}-${displayItem.id}-${detailIndex}-tool-call`}

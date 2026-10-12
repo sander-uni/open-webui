@@ -49,6 +49,7 @@
 	import AdminConnections from '$lib/components/admin/Settings/Connections.svelte';
 	import AdminModels from '$lib/components/admin/Settings/Models.svelte';
 	import AdminSubagents from '$lib/components/admin/Settings/Subagents.svelte';
+	import AdminCustomSettings from '$lib/components/admin/Settings/CustomSettings.svelte';
 	import AdminEvaluations from '$lib/components/admin/Settings/Evaluations.svelte';
 	import AdminAnalytics from '$lib/components/admin/Analytics.svelte';
 	import AdminIntegrations from '$lib/components/admin/Settings/Integrations.svelte';
@@ -159,6 +160,7 @@
 		'admin:general': $i18n.t('System'),
 		'admin:authentication': $i18n.t('System'),
 		'admin:interface': $i18n.t('System'),
+		'admin:custom-settings': $i18n.t('System'),
 		'admin:connections': $i18n.t('AI'),
 		'admin:models': $i18n.t('AI'),
 		'admin:subagents': $i18n.t('AI'),
@@ -283,6 +285,12 @@
 			titleKey: 'settings.admin.interface.title',
 			title: $i18n.t('settings.admin.interface.title'),
 			searchPrefixes: ['settings.admin.interface.', 'settings.personal.general.parameters.']
+		},
+		{
+			id: 'admin:custom-settings',
+			titleKey: 'settings.admin.custom.title',
+			title: $i18n.t('settings.admin.custom.title'),
+			searchPrefixes: ['settings.admin.custom.']
 		},
 		{
 			id: 'admin:connections',
@@ -865,6 +873,8 @@
 				<AdminModels bind:tabState />
 			{:else if selectedTab === 'admin:subagents'}
 				<AdminSubagents />
+			{:else if selectedTab === 'admin:custom-settings'}
+				<AdminCustomSettings />
 			{:else if selectedTab === 'admin:evaluations'}
 				<AdminEvaluations />
 			{:else if selectedTab === 'admin:analytics'}
