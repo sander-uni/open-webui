@@ -3,12 +3,13 @@ import {
 	type OutputDetailToken,
 	type OutputItem
 } from './structuredOutput';
+import { DEFAULT_TOOL_CHAIN_DISPLAY } from '../../../utils/custom-settings';
 
 const outputKeys = new WeakMap<OutputItem, string>();
 const detailKeys = new WeakMap<OutputDetailToken, string>();
 
 /** UI-only paging. Never replace the message's stored output with this window. */
-export const OUTPUT_PAGE_SIZE = 50;
+export const OUTPUT_PAGE_SIZE = DEFAULT_TOOL_CHAIN_DISPLAY.page_size;
 
 export type OutputWindow = {
 	output: OutputItem[];
@@ -37,7 +38,12 @@ export function selectOutputWindow(
 		}
 	}
 
-	const count = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : OUTPUT_PAGE_SIZE;
+	const count =
+		limit === Infinity
+			? steps.length
+			: Number.isFinite(limit)
+				? Math.max(1, Math.floor(limit))
+				: OUTPUT_PAGE_SIZE;
 	const selected = new Set(steps.slice(-count));
 	for (const index of steps) {
 		const item = output[index];

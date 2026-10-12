@@ -11,3 +11,5 @@ Keep pending approvals and current errors visible.
 Preserve the complete history for the model and saved conversation.
 
 Can you implement the wanted functionality in a way that is unlikely to conflict with future openwebui updates?
+
+Is this configurable within openwebui settings? Perhaps a new category in admin: custom settings, with its own subcategories

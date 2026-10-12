@@ -18,7 +18,7 @@
       "text": "A single 2,000-call chain initially displays a small recent page and loads earlier steps by scrolling upward.",
       "source": "it handles messages by loading more as u scroll up. Ideally I want it to do that for a single tool chain too",
       "command": "bash tests/tool-chain/launch-demo.sh",
-      "setup": "python3 \"${REQUIREMENT_DEMOS_DIR:?}/scripts/demo_server.py\" --port 5191 --directory tests/tool-chain/dist",
+      "setup": "python3 tests/tool-chain/backend_fixture.py --port 5191",
       "steps": [
         {
           "wait_for": "DEMO-MARK ready",
@@ -93,7 +93,7 @@
       "text": "Pending approvals remain accessible and live text survives a saved-snapshot reload.",
       "source": "Keep pending approvals and current errors visible.",
       "command": "bash tests/tool-chain/launch-demo.sh",
-      "setup": "python3 \"${REQUIREMENT_DEMOS_DIR:?}/scripts/demo_server.py\" --port 5191 --directory tests/tool-chain/dist",
+      "setup": "python3 tests/tool-chain/backend_fixture.py --port 5191",
       "steps": [
         {
           "wait_for": "DEMO-MARK ready",
@@ -157,6 +157,267 @@
         }
       ],
       "check": "npm run test:frontend -- --run src/lib/components/chat/Messages/outputWindow.test.ts",
+      "timeout": 120
+    },
+    {
+      "id": "R03",
+      "text": "Custom Settings is available to administrators with a Tool-chain display subcategory.",
+      "source": "Is this configurable within openwebui settings? Perhaps a new category in admin: custom settings, with its own subcategories",
+      "command": "bash tests/tool-chain/launch-demo.sh",
+      "setup": "python3 tests/tool-chain/backend_fixture.py --port 5191",
+      "steps": [
+        {
+          "wait_for": "DEMO-MARK ready",
+          "timeout": 60
+        },
+        {
+          "wait": 2
+        },
+        {
+          "checkpoint": "before"
+        },
+        {
+          "click": [
+            843,
+            117
+          ]
+        },
+        {
+          "wait": 1
+        },
+        {
+          "checkpoint": "configured"
+        }
+      ],
+      "checkpoints": [
+        {
+          "label": "before",
+          "question": "Does the recent tool-chain page show roughly 50 displayed steps before changing settings?",
+          "failure": "The initial page displays thousands of steps."
+        },
+        {
+          "label": "configured",
+          "question": "Does the admin custom settings panel show the Tool-chain display subcategory with enable, steps per page, and automatic loading controls?",
+          "failure": "The requested configuration is unavailable or its behavior is absent."
+        }
+      ],
+      "timeout": 120
+    },
+    {
+      "id": "R04",
+      "text": "Saving a different page size changes the recent tool-chain page and survives reopening the settings panel.",
+      "source": "Is this configurable within openwebui settings? Perhaps a new category in admin: custom settings, with its own subcategories",
+      "command": "bash tests/tool-chain/launch-demo.sh",
+      "setup": "python3 tests/tool-chain/backend_fixture.py --port 5191",
+      "steps": [
+        {
+          "wait_for": "DEMO-MARK ready",
+          "timeout": 60
+        },
+        {
+          "wait": 2
+        },
+        {
+          "checkpoint": "before"
+        },
+        {
+          "click": [
+            843,
+            117
+          ]
+        },
+        {
+          "wait": 1
+        },
+        {
+          "click": [
+            840,
+            434
+          ]
+        },
+        {
+          "key": "ctrl+a"
+        },
+        {
+          "type": "20"
+        },
+        {
+          "click": [
+            808,
+            680
+          ]
+        },
+        {
+          "wait": 1
+        },
+        {
+          "click": [
+            1213,
+            218
+          ]
+        },
+        {
+          "wait": 0.5
+        },
+        {
+          "click": [
+            843,
+            117
+          ]
+        },
+        {
+          "wait": 1
+        },
+        {
+          "checkpoint": "configured"
+        }
+      ],
+      "checkpoints": [
+        {
+          "label": "before",
+          "question": "Does the recent tool-chain page show roughly 50 displayed steps before changing settings?",
+          "failure": "The initial page displays thousands of steps."
+        },
+        {
+          "label": "configured",
+          "question": "After saving 20 steps per page and reopening settings, does the panel still show 20 while the chain shows approximately 20 recent steps?",
+          "failure": "The requested configuration is unavailable or its behavior is absent."
+        }
+      ],
+      "timeout": 120
+    },
+    {
+      "id": "R05",
+      "text": "Automatic upward-scroll loading can be disabled while manual loading remains available.",
+      "source": "Is this configurable within openwebui settings? Perhaps a new category in admin: custom settings, with its own subcategories",
+      "command": "bash tests/tool-chain/launch-demo.sh",
+      "setup": "python3 tests/tool-chain/backend_fixture.py --port 5191",
+      "steps": [
+        {
+          "wait_for": "DEMO-MARK ready",
+          "timeout": 60
+        },
+        {
+          "wait": 2
+        },
+        {
+          "checkpoint": "before"
+        },
+        {
+          "click": [
+            843,
+            117
+          ]
+        },
+        {
+          "wait": 1
+        },
+        {
+          "click": [
+            840,
+            434
+          ]
+        },
+        {
+          "key": "ctrl+a"
+        },
+        {
+          "type": "20"
+        },
+        {
+          "click": [
+            1218,
+            549
+          ]
+        },
+        {
+          "click": [
+            808,
+            680
+          ]
+        },
+        {
+          "wait": 1
+        },
+        {
+          "click": [
+            1213,
+            218
+          ]
+        },
+        {
+          "wait": 0.5
+        },
+        {
+          "checkpoint": "disabled"
+        },
+        {
+          "move": [
+            500,
+            480
+          ]
+        },
+        {
+          "click": [
+            500,
+            480
+          ],
+          "button": 5
+        },
+        {
+          "wait": 0.5
+        },
+        {
+          "click": [
+            500,
+            480
+          ],
+          "button": 5
+        },
+        {
+          "wait": 0.5
+        },
+        {
+          "click": [
+            500,
+            480
+          ],
+          "button": 4
+        },
+        {
+          "wait": 1
+        },
+        {
+          "click": [
+            500,
+            480
+          ],
+          "button": 4
+        },
+        {
+          "wait": 1
+        },
+        {
+          "checkpoint": "configured"
+        }
+      ],
+      "checkpoints": [
+        {
+          "label": "before",
+          "question": "Does the recent tool-chain page show roughly 50 displayed steps before changing settings?",
+          "failure": "The initial page displays thousands of steps."
+        },
+        {
+          "label": "disabled",
+          "question": "After saving a 20-step page with automatic loading disabled, does the chain show approximately 20 recent steps and a Load earlier steps control?",
+          "failure": "The new page size is not applied or manual loading is absent."
+        },
+        {
+          "label": "configured",
+          "question": "After automatic loading is disabled, does upward scrolling leave the hidden-step count unchanged while Load earlier steps remains available?",
+          "failure": "The requested configuration is unavailable or its behavior is absent."
+        }
+      ],
       "timeout": 120
     }
   ],
@@ -234,7 +495,7 @@
     "tests/tool-chain/dist/assets/applescript-Co6uUVPk.js",
     "tests/tool-chain/dist/assets/ara-BRHolxvo.js",
     "tests/tool-chain/dist/assets/arc-BN3pgcLk.js",
-    "tests/tool-chain/dist/assets/architectureDiagram-3BPJPVTR-Fp6g4wuI.js",
+    "tests/tool-chain/dist/assets/architectureDiagram-3BPJPVTR-CqBjzfGg.js",
     "tests/tool-chain/dist/assets/asciiarmor-Df11BRmG.js",
     "tests/tool-chain/dist/assets/asciidoc-Ve4PFQV2.js",
     "tests/tool-chain/dist/assets/asm-D_Q5rh1f.js",
@@ -255,12 +516,12 @@
     "tests/tool-chain/dist/assets/bicep-Bmn6On1c.js",
     "tests/tool-chain/dist/assets/bird2-BIv1doCn.js",
     "tests/tool-chain/dist/assets/blade-BjGOyj-B.js",
-    "tests/tool-chain/dist/assets/blockDiagram-GPEHLZMM-DI_pNfsK.js",
+    "tests/tool-chain/dist/assets/blockDiagram-GPEHLZMM-B_DUUx5E.js",
     "tests/tool-chain/dist/assets/brainfuck-C4LP7Hcl.js",
     "tests/tool-chain/dist/assets/bsl-BO_Y6i37.js",
     "tests/tool-chain/dist/assets/c-BIGW1oBm.js",
     "tests/tool-chain/dist/assets/c3-eo99z4R2.js",
-    "tests/tool-chain/dist/assets/c4Diagram-AAUBKEIU-CYHKkPX6.js",
+    "tests/tool-chain/dist/assets/c4Diagram-AAUBKEIU-Df7dut-r.js",
     "tests/tool-chain/dist/assets/cadence-Bv_4Rxtq.js",
     "tests/tool-chain/dist/assets/cairo-KRGpt6FW.js",
     "tests/tool-chain/dist/assets/catppuccin-frappe-DFWUc33u.js",
@@ -268,18 +529,18 @@
     "tests/tool-chain/dist/assets/catppuccin-macchiato-DQyhUUbL.js",
     "tests/tool-chain/dist/assets/catppuccin-mocha-D87Tk5Gz.js",
     "tests/tool-chain/dist/assets/cdn.min-Bjrbrtb2.js",
-    "tests/tool-chain/dist/assets/channel-_8n6BtXC.js",
-    "tests/tool-chain/dist/assets/chunk-2J33WTMH-kh6nZLPc.js",
-    "tests/tool-chain/dist/assets/chunk-4BX2VUAB-baTSawo6.js",
-    "tests/tool-chain/dist/assets/chunk-55IACEB6-B-M-Qjn7.js",
-    "tests/tool-chain/dist/assets/chunk-727SXJPM-B-EvGEhx.js",
-    "tests/tool-chain/dist/assets/chunk-AQP2D5EJ-DaTup1px.js",
-    "tests/tool-chain/dist/assets/chunk-FMBD7UC4-BaOAHE7a.js",
-    "tests/tool-chain/dist/assets/chunk-ND2GUHAM-Daonw5Mf.js",
-    "tests/tool-chain/dist/assets/chunk-QZHKN3VN-CsTYamjM.js",
+    "tests/tool-chain/dist/assets/channel-DqHH_ZDI.js",
+    "tests/tool-chain/dist/assets/chunk-2J33WTMH-BPG_7xQR.js",
+    "tests/tool-chain/dist/assets/chunk-4BX2VUAB-BR7oRRrq.js",
+    "tests/tool-chain/dist/assets/chunk-55IACEB6-CvCnjFT7.js",
+    "tests/tool-chain/dist/assets/chunk-727SXJPM-CAHEM7Kb.js",
+    "tests/tool-chain/dist/assets/chunk-AQP2D5EJ-CV-ti92f.js",
+    "tests/tool-chain/dist/assets/chunk-FMBD7UC4-KRgLf-Zb.js",
+    "tests/tool-chain/dist/assets/chunk-ND2GUHAM-TN4YpOOJ.js",
+    "tests/tool-chain/dist/assets/chunk-QZHKN3VN-DeSB9EHE.js",
     "tests/tool-chain/dist/assets/clarity-D53aC0YG.js",
-    "tests/tool-chain/dist/assets/classDiagram-4FO5ZUOK-CHV6-6NR.js",
-    "tests/tool-chain/dist/assets/classDiagram-v2-Q7XG4LA2-CHV6-6NR.js",
+    "tests/tool-chain/dist/assets/classDiagram-4FO5ZUOK-DewDmYtM.js",
+    "tests/tool-chain/dist/assets/classDiagram-v2-Q7XG4LA2-DewDmYtM.js",
     "tests/tool-chain/dist/assets/clike-B9uivgTg.js",
     "tests/tool-chain/dist/assets/clojure-BMjYHr_A.js",
     "tests/tool-chain/dist/assets/clojure-P80f7IUj.js",
@@ -295,7 +556,7 @@
     "tests/tool-chain/dist/assets/common-lisp-Cg-RD9OK.js",
     "tests/tool-chain/dist/assets/commonlisp-DBKNyK5s.js",
     "tests/tool-chain/dist/assets/coq-DkFqJrB1.js",
-    "tests/tool-chain/dist/assets/cose-bilkent-S5V4N54A-CmRyySQW.js",
+    "tests/tool-chain/dist/assets/cose-bilkent-S5V4N54A-BLqqi-s7.js",
     "tests/tool-chain/dist/assets/cpp-CofmeUqb.js",
     "tests/tool-chain/dist/assets/crystal-DNxU26gB.js",
     "tests/tool-chain/dist/assets/crystal-SjHAIU92.js",
@@ -309,23 +570,23 @@
     "tests/tool-chain/dist/assets/cytoscape.esm-CyJtwmzi.js",
     "tests/tool-chain/dist/assets/d-85-TOEBH.js",
     "tests/tool-chain/dist/assets/d-pRatUO7H.js",
-    "tests/tool-chain/dist/assets/dagre-BM42HDAG-DqYPV5Zs.js",
+    "tests/tool-chain/dist/assets/dagre-BM42HDAG-CE5G9W1e.js",
     "tests/tool-chain/dist/assets/dark-plus-C3mMm8J8.js",
     "tests/tool-chain/dist/assets/dart-bE4Kk8sk.js",
     "tests/tool-chain/dist/assets/dax-CEL-wOlO.js",
     "tests/tool-chain/dist/assets/defaultLocale-CzDG__Ur.js",
     "tests/tool-chain/dist/assets/desktop-BmXAJ9_W.js",
-    "tests/tool-chain/dist/assets/diagram-2AECGRRQ-BsYYh5Ur.js",
-    "tests/tool-chain/dist/assets/diagram-5GNKFQAL-DMB_rTAN.js",
-    "tests/tool-chain/dist/assets/diagram-KO2AKTUF-D5X5_ld9.js",
-    "tests/tool-chain/dist/assets/diagram-LMA3HP47-DG9eLfHj.js",
-    "tests/tool-chain/dist/assets/diagram-OG6HWLK6-Z2AF1zqJ.js",
+    "tests/tool-chain/dist/assets/diagram-2AECGRRQ-BdpCaXKp.js",
+    "tests/tool-chain/dist/assets/diagram-5GNKFQAL-BH8fjAwC.js",
+    "tests/tool-chain/dist/assets/diagram-KO2AKTUF-HD02NF_A.js",
+    "tests/tool-chain/dist/assets/diagram-LMA3HP47-DszlYtAX.js",
+    "tests/tool-chain/dist/assets/diagram-OG6HWLK6-CMQy3eQW.js",
     "tests/tool-chain/dist/assets/diff-D97Zzqfu.js",
     "tests/tool-chain/dist/assets/diff-DbItnlRl.js",
     "tests/tool-chain/dist/assets/docker-BcOcwvcX.js",
     "tests/tool-chain/dist/assets/dockerfile-BKs6k2Af.js",
-    "tests/tool-chain/dist/assets/docx-preview-YcbWwPO2.js",
-    "tests/tool-chain/dist/assets/docxToHtml-DP2HV2Uk.js",
+    "tests/tool-chain/dist/assets/docx-preview-qDfHqpVh.js",
+    "tests/tool-chain/dist/assets/docxToHtml-Czm7n7be.js",
     "tests/tool-chain/dist/assets/dotenv-Da5cRb03.js",
     "tests/tool-chain/dist/assets/dracula-BzJJZx-M.js",
     "tests/tool-chain/dist/assets/dracula-soft-BXkSAIEj.js",
@@ -340,25 +601,25 @@
     "tests/tool-chain/dist/assets/elm-DbKCFpqz.js",
     "tests/tool-chain/dist/assets/elm-vLlmbW-K.js",
     "tests/tool-chain/dist/assets/emacs-lisp-CXvaQtF9.js",
-    "tests/tool-chain/dist/assets/erDiagram-TEJ5UH35-_X5dTI79.js",
+    "tests/tool-chain/dist/assets/erDiagram-TEJ5UH35-CG84G95U.js",
     "tests/tool-chain/dist/assets/erb-BYCe7drp.js",
     "tests/tool-chain/dist/assets/erlang-BNw1qcRV.js",
     "tests/tool-chain/dist/assets/erlang-DsQrWhSR.js",
     "tests/tool-chain/dist/assets/everforest-dark-BgDCqdQA.js",
     "tests/tool-chain/dist/assets/everforest-light-C8M2exoo.js",
-    "tests/tool-chain/dist/assets/excelToTable-BtaQXf4U.js",
+    "tests/tool-chain/dist/assets/excelToTable-CDF1-PUI.js",
     "tests/tool-chain/dist/assets/factor-kuTfRLto.js",
     "tests/tool-chain/dist/assets/fcl-Kvtd6kyn.js",
     "tests/tool-chain/dist/assets/fennel-BYunw83y.js",
     "tests/tool-chain/dist/assets/fish-BvzEVeQv.js",
-    "tests/tool-chain/dist/assets/flowDiagram-I6XJVG4X-CXVMiJi-.js",
+    "tests/tool-chain/dist/assets/flowDiagram-I6XJVG4X-4qMyUH_A.js",
     "tests/tool-chain/dist/assets/fluent-C4IJs8-o.js",
     "tests/tool-chain/dist/assets/forth-Ffai-XNe.js",
     "tests/tool-chain/dist/assets/fortran-DYz_wnZ1.js",
     "tests/tool-chain/dist/assets/fortran-fixed-form-CkoXwp7k.js",
     "tests/tool-chain/dist/assets/fortran-free-form-BxgE0vQu.js",
     "tests/tool-chain/dist/assets/fsharp-CXgrBDvD.js",
-    "tests/tool-chain/dist/assets/ganttDiagram-6RSMTGT7-CLq8aoIW.js",
+    "tests/tool-chain/dist/assets/ganttDiagram-6RSMTGT7-CGkYn25m.js",
     "tests/tool-chain/dist/assets/gas-Bneqetm1.js",
     "tests/tool-chain/dist/assets/gdresource-BOOCDP_w.js",
     "tests/tool-chain/dist/assets/gdscript-C5YyOfLZ.js",
@@ -368,7 +629,7 @@
     "tests/tool-chain/dist/assets/gherkin-heZmZLOM.js",
     "tests/tool-chain/dist/assets/git-commit-F4YmCXRG.js",
     "tests/tool-chain/dist/assets/git-rebase-r7XF79zn.js",
-    "tests/tool-chain/dist/assets/gitGraphDiagram-PVQCEYII-Bxkjzyix.js",
+    "tests/tool-chain/dist/assets/gitGraphDiagram-PVQCEYII-BG3NPfJL.js",
     "tests/tool-chain/dist/assets/github-dark-DHJKELXO.js",
     "tests/tool-chain/dist/assets/github-dark-default-Cuk6v7N8.js",
     "tests/tool-chain/dist/assets/github-dark-dimmed-DH5Ifo-i.js",
@@ -415,46 +676,46 @@
     "tests/tool-chain/dist/assets/hy-DFXneXwc.js",
     "tests/tool-chain/dist/assets/idl-BEugSyMb.js",
     "tests/tool-chain/dist/assets/imba-DGztddWO.js",
-    "tests/tool-chain/dist/assets/index-73v7yh1D.js",
-    "tests/tool-chain/dist/assets/index-7jkd3jlr.js",
-    "tests/tool-chain/dist/assets/index-B-OAP4WJ.js",
-    "tests/tool-chain/dist/assets/index-B0o-JXYF.js",
-    "tests/tool-chain/dist/assets/index-B28tcTdn.js",
+    "tests/tool-chain/dist/assets/index-0Uoz638f.js",
+    "tests/tool-chain/dist/assets/index-1xlS8Pp-.js",
+    "tests/tool-chain/dist/assets/index-6wAXhb0G.js",
     "tests/tool-chain/dist/assets/index-B4q2V_lV.js",
-    "tests/tool-chain/dist/assets/index-BE4eXAgx.js",
-    "tests/tool-chain/dist/assets/index-BPgLJGNX.js",
-    "tests/tool-chain/dist/assets/index-BYWTwsue.js",
-    "tests/tool-chain/dist/assets/index-BYlwCJqm.js",
-    "tests/tool-chain/dist/assets/index-Bdhqf1yI.js",
+    "tests/tool-chain/dist/assets/index-BKbeuyd3.js",
+    "tests/tool-chain/dist/assets/index-BZcl6lmE.js",
     "tests/tool-chain/dist/assets/index-Bi7T_FA4.js",
-    "tests/tool-chain/dist/assets/index-Bt3lWrtI.js",
-    "tests/tool-chain/dist/assets/index-CCJ99tiO.js",
-    "tests/tool-chain/dist/assets/index-CDpazY0O.js",
-    "tests/tool-chain/dist/assets/index-CN8nHR-l.css",
-    "tests/tool-chain/dist/assets/index-CYk_vb09.js",
-    "tests/tool-chain/dist/assets/index-Cgs_Oc4O.js",
-    "tests/tool-chain/dist/assets/index-Ck1pHB10.js",
-    "tests/tool-chain/dist/assets/index-Ckk9hfBi.js",
-    "tests/tool-chain/dist/assets/index-Cw5hWcNq.js",
-    "tests/tool-chain/dist/assets/index-DE3L9CCh.js",
-    "tests/tool-chain/dist/assets/index-DMBEELTR.js",
-    "tests/tool-chain/dist/assets/index-Dnc7CM7t.js",
-    "tests/tool-chain/dist/assets/index-Dyq_kPTe.js",
-    "tests/tool-chain/dist/assets/index-UG0c8LAx.js",
-    "tests/tool-chain/dist/assets/index-hXT3h2dR.js",
-    "tests/tool-chain/dist/assets/index-jGcpnfpg.js",
-    "tests/tool-chain/dist/assets/index-kiPSB380.js",
-    "tests/tool-chain/dist/assets/index-wjatnxl-.js",
-    "tests/tool-chain/dist/assets/infoDiagram-5YYISTIA-BaFRwuMa.js",
+    "tests/tool-chain/dist/assets/index-BiGi5BGN.js",
+    "tests/tool-chain/dist/assets/index-BlN3oKaC.js",
+    "tests/tool-chain/dist/assets/index-BniXnU_7.js",
+    "tests/tool-chain/dist/assets/index-BuvAhF4V.js",
+    "tests/tool-chain/dist/assets/index-C-r9AM5R.js",
+    "tests/tool-chain/dist/assets/index-CB8BlNWg.js",
+    "tests/tool-chain/dist/assets/index-C_Iw5Os9.js",
+    "tests/tool-chain/dist/assets/index-CdmZypzq.js",
+    "tests/tool-chain/dist/assets/index-CnGT9Osm.js",
+    "tests/tool-chain/dist/assets/index-CvPdxHrV.js",
+    "tests/tool-chain/dist/assets/index-D14mwT1M.js",
+    "tests/tool-chain/dist/assets/index-D5472TN6.js",
+    "tests/tool-chain/dist/assets/index-DN2_8exU.js",
+    "tests/tool-chain/dist/assets/index-DNa_Ihek.js",
+    "tests/tool-chain/dist/assets/index-DiREIT52.js",
+    "tests/tool-chain/dist/assets/index-DwDWKzpT.js",
+    "tests/tool-chain/dist/assets/index-FM4VXAuc.js",
+    "tests/tool-chain/dist/assets/index-N3DH6g5b.js",
+    "tests/tool-chain/dist/assets/index-WWCoYASo.js",
+    "tests/tool-chain/dist/assets/index-WbhfiUyM.js",
+    "tests/tool-chain/dist/assets/index-WzWtz6uj.css",
+    "tests/tool-chain/dist/assets/index-iHAIgMum.js",
+    "tests/tool-chain/dist/assets/index-wpUEw0rY.js",
+    "tests/tool-chain/dist/assets/infoDiagram-5YYISTIA-DcztWdfi.js",
     "tests/tool-chain/dist/assets/ini-BEwlwnbL.js",
     "tests/tool-chain/dist/assets/init-Dmth1JHB.js",
-    "tests/tool-chain/dist/assets/ishikawaDiagram-YF4QCWOH-BHpzGSVK.js",
+    "tests/tool-chain/dist/assets/ishikawaDiagram-YF4QCWOH-DF0AsbHj.js",
     "tests/tool-chain/dist/assets/java-CylS5w8V.js",
     "tests/tool-chain/dist/assets/javascript-qCveANmP.js",
     "tests/tool-chain/dist/assets/javascript-wDzz0qaB.js",
     "tests/tool-chain/dist/assets/jinja-f2NsQr07.js",
     "tests/tool-chain/dist/assets/jison-wvAkD_A8.js",
-    "tests/tool-chain/dist/assets/journeyDiagram-JHISSGLW-DX4vNEo3.js",
+    "tests/tool-chain/dist/assets/journeyDiagram-JHISSGLW-ChoR_inq.js",
     "tests/tool-chain/dist/assets/json-Cp-IABpG.js",
     "tests/tool-chain/dist/assets/json5-C9tS-k6U.js",
     "tests/tool-chain/dist/assets/jsonc-Des-eS-w.js",
@@ -462,14 +723,14 @@
     "tests/tool-chain/dist/assets/jsonnet-DFQXde-d.js",
     "tests/tool-chain/dist/assets/jssm-C2t-YnRu.js",
     "tests/tool-chain/dist/assets/jsx-g9-lgVsj.js",
-    "tests/tool-chain/dist/assets/jszip.min-B6JAzkNF.js",
+    "tests/tool-chain/dist/assets/jszip.min-D2Xm2pGI.js",
     "tests/tool-chain/dist/assets/julia-CxzCAyBv.js",
     "tests/tool-chain/dist/assets/julia-DuME0IfC.js",
     "tests/tool-chain/dist/assets/just-VxiPbLrw.js",
     "tests/tool-chain/dist/assets/kanagawa-dragon-CkXjmgJE.js",
     "tests/tool-chain/dist/assets/kanagawa-lotus-CfQXZHmo.js",
     "tests/tool-chain/dist/assets/kanagawa-wave-DWedfzmr.js",
-    "tests/tool-chain/dist/assets/kanban-definition-UN3LZRKU-CaFdoeDJ.js",
+    "tests/tool-chain/dist/assets/kanban-definition-UN3LZRKU-DxHI3kne.js",
     "tests/tool-chain/dist/assets/katex-BkgLa5T_.js",
     "tests/tool-chain/dist/assets/katex-DrELT6T8.css",
     "tests/tool-chain/dist/assets/kdl-DV7GczEv.js",
@@ -504,11 +765,11 @@
     "tests/tool-chain/dist/assets/mdc-DTYItulj.js",
     "tests/tool-chain/dist/assets/mdx-Cmh6b_Ma.js",
     "tests/tool-chain/dist/assets/mermaid-mWjccvbQ.js",
-    "tests/tool-chain/dist/assets/mermaid.core-D2RUegrz.js",
+    "tests/tool-chain/dist/assets/mermaid.core-Dmxlxb6w.js",
     "tests/tool-chain/dist/assets/mhchem-4Wrz-roV.js",
     "tests/tool-chain/dist/assets/min-dark-CafNBF8u.js",
     "tests/tool-chain/dist/assets/min-light-CTRr51gU.js",
-    "tests/tool-chain/dist/assets/mindmap-definition-RKZ34NQL-C7r2vALw.js",
+    "tests/tool-chain/dist/assets/mindmap-definition-RKZ34NQL-KUr0LYP9.js",
     "tests/tool-chain/dist/assets/mipsasm-CKIfxQSi.js",
     "tests/tool-chain/dist/assets/mirc-CjQqDB4T.js",
     "tests/tool-chain/dist/assets/mllike-CXdrOF99.js",
@@ -549,7 +810,7 @@
     "tests/tool-chain/dist/assets/perl-CdXCOZ3F.js",
     "tests/tool-chain/dist/assets/perl-NvoQZIq0.js",
     "tests/tool-chain/dist/assets/php-R6g_5hLQ.js",
-    "tests/tool-chain/dist/assets/pieDiagram-4H26LBE5-BauiPnpv.js",
+    "tests/tool-chain/dist/assets/pieDiagram-4H26LBE5-DiIvdsq4.js",
     "tests/tool-chain/dist/assets/pig-CevX1Tat.js",
     "tests/tool-chain/dist/assets/pkl-u5AG7uiY.js",
     "tests/tool-chain/dist/assets/plastic-3e1v2bzS.js",
@@ -561,7 +822,7 @@
     "tests/tool-chain/dist/assets/powerquery-CEu0bR-o.js",
     "tests/tool-chain/dist/assets/powershell-CFHJl5sT.js",
     "tests/tool-chain/dist/assets/powershell-Dpen1YoG.js",
-    "tests/tool-chain/dist/assets/pptxToHtml-D0i7MrId.js",
+    "tests/tool-chain/dist/assets/pptxToHtml-D0GHExqy.js",
     "tests/tool-chain/dist/assets/prisma-Dd19v3D-.js",
     "tests/tool-chain/dist/assets/prolog-CbFg5uaA.js",
     "tests/tool-chain/dist/assets/properties-C78fOPTZ.js",
@@ -579,7 +840,7 @@
     "tests/tool-chain/dist/assets/qml-3beO22l8.js",
     "tests/tool-chain/dist/assets/qmldir-C8lEn-DE.js",
     "tests/tool-chain/dist/assets/qss-IeuSbFQv.js",
-    "tests/tool-chain/dist/assets/quadrantDiagram-W4KKPZXB-B87kY0Gz.js",
+    "tests/tool-chain/dist/assets/quadrantDiagram-W4KKPZXB-Di8DSCcZ.js",
     "tests/tool-chain/dist/assets/r-DUYO_cvP.js",
     "tests/tool-chain/dist/assets/r-Dspwwk_N.js",
     "tests/tool-chain/dist/assets/racket-BqYA7rlc.js",
@@ -590,7 +851,7 @@
     "tests/tool-chain/dist/assets/reg-C-SQnVFl.js",
     "tests/tool-chain/dist/assets/regexp-CDVJQ6XC.js",
     "tests/tool-chain/dist/assets/rel-C3B-1QV4.js",
-    "tests/tool-chain/dist/assets/requirementDiagram-4Y6WPE33-CqZW1MPm.js",
+    "tests/tool-chain/dist/assets/requirementDiagram-4Y6WPE33-DbtQmmgu.js",
     "tests/tool-chain/dist/assets/riscv-BM1_JUlF.js",
     "tests/tool-chain/dist/assets/ron-D8l8udqQ.js",
     "tests/tool-chain/dist/assets/rose-pine-dawn-DHQR4-dF.js",
@@ -602,7 +863,7 @@
     "tests/tool-chain/dist/assets/ruby-B2Rjki9n.js",
     "tests/tool-chain/dist/assets/ruby-Wjq7vjNf.js",
     "tests/tool-chain/dist/assets/rust-B1yitclQ.js",
-    "tests/tool-chain/dist/assets/sankeyDiagram-5OEKKPKP-CbcekFBL.js",
+    "tests/tool-chain/dist/assets/sankeyDiagram-5OEKKPKP-CmPf-7XI.js",
     "tests/tool-chain/dist/assets/sas-B4kiWyti.js",
     "tests/tool-chain/dist/assets/sas-cz2c8ADy.js",
     "tests/tool-chain/dist/assets/sass-Cj5Yp3dK.js",
@@ -611,7 +872,7 @@
     "tests/tool-chain/dist/assets/scheme-C98Dy4si.js",
     "tests/tool-chain/dist/assets/scss-D5BDwBP9.js",
     "tests/tool-chain/dist/assets/sdbl-DVxCFoDh.js",
-    "tests/tool-chain/dist/assets/sequenceDiagram-3UESZ5HK-D7iMqtMN.js",
+    "tests/tool-chain/dist/assets/sequenceDiagram-3UESZ5HK-DgG0RuUb.js",
     "tests/tool-chain/dist/assets/shaderlab-Dg9Lc6iA.js",
     "tests/tool-chain/dist/assets/shell-CjFT_Tl9.js",
     "tests/tool-chain/dist/assets/shellscript-Yzrsuije.js",
@@ -634,11 +895,11 @@
     "tests/tool-chain/dist/assets/spreadsheet-BCZA_wO0.js",
     "tests/tool-chain/dist/assets/sql-BLtJtn59.js",
     "tests/tool-chain/dist/assets/sql-D0XecflT.js",
-    "tests/tool-chain/dist/assets/sql-wasm-browser-2QkYot6i.js",
+    "tests/tool-chain/dist/assets/sql-wasm-browser-5ZKMVmF-.js",
     "tests/tool-chain/dist/assets/ssh-config-_ykCGR6B.js",
     "tests/tool-chain/dist/assets/stata-BH5u7GGu.js",
-    "tests/tool-chain/dist/assets/stateDiagram-AJRCARHV-CrgArVLN.js",
-    "tests/tool-chain/dist/assets/stateDiagram-v2-BHNVJYJU-D2sIUdV9.js",
+    "tests/tool-chain/dist/assets/stateDiagram-AJRCARHV-DVvzMOCC.js",
+    "tests/tool-chain/dist/assets/stateDiagram-v2-BHNVJYJU-DmExYqoz.js",
     "tests/tool-chain/dist/assets/step-DYkdTxz9.js",
     "tests/tool-chain/dist/assets/stex-C3f8Ysf7.js",
     "tests/tool-chain/dist/assets/stylus-B533Al4x.js",
@@ -661,7 +922,7 @@
     "tests/tool-chain/dist/assets/tiddlywiki-DO-Gjzrf.js",
     "tests/tool-chain/dist/assets/tiki-DGYXhP31.js",
     "tests/tool-chain/dist/assets/time-CW78aI_c.js",
-    "tests/tool-chain/dist/assets/timeline-definition-PNZ67QCA-nIZo11qe.js",
+    "tests/tool-chain/dist/assets/timeline-definition-PNZ67QCA-LbBZUoEP.js",
     "tests/tool-chain/dist/assets/tokyo-night-hegEt444.js",
     "tests/tool-chain/dist/assets/toml-Bm5Em-hy.js",
     "tests/tool-chain/dist/assets/toml-vGWfd6FD.js",
@@ -684,7 +945,7 @@
     "tests/tool-chain/dist/assets/vbscript-BuJXcnF6.js",
     "tests/tool-chain/dist/assets/vega.module-BTmR9l_D.js",
     "tests/tool-chain/dist/assets/velocity-D8B20fx6.js",
-    "tests/tool-chain/dist/assets/vennDiagram-CIIHVFJN-exkoIcN0.js",
+    "tests/tool-chain/dist/assets/vennDiagram-CIIHVFJN-DqLgtd1Z.js",
     "tests/tool-chain/dist/assets/verilog-BQ8w6xss.js",
     "tests/tool-chain/dist/assets/verilog-C6RDOZhf.js",
     "tests/tool-chain/dist/assets/vesper-DU1UobuO.js",
@@ -698,8 +959,8 @@
     "tests/tool-chain/dist/assets/vue-html-AaS7Mt5G.js",
     "tests/tool-chain/dist/assets/vue-vine-BoDAl6tE.js",
     "tests/tool-chain/dist/assets/vyper-CDx5xZoG.js",
-    "tests/tool-chain/dist/assets/wardley-L42UT6IY-CW9QwzxD.js",
-    "tests/tool-chain/dist/assets/wardleyDiagram-YWT4CUSO-eGZfqXI1.js",
+    "tests/tool-chain/dist/assets/wardley-L42UT6IY-Dqik6hPx.js",
+    "tests/tool-chain/dist/assets/wardleyDiagram-YWT4CUSO-DxzI906Q.js",
     "tests/tool-chain/dist/assets/wasm-CG6Dc4jp.js",
     "tests/tool-chain/dist/assets/wasm-MzD3tlZU.js",
     "tests/tool-chain/dist/assets/webidl-ZXfAyPTL.js",
@@ -712,7 +973,7 @@
     "tests/tool-chain/dist/assets/xml-sdJ4AIDG.js",
     "tests/tool-chain/dist/assets/xquery-CQfU5ijd.js",
     "tests/tool-chain/dist/assets/xsl-CtQFsRM5.js",
-    "tests/tool-chain/dist/assets/xychartDiagram-2RQKCTM6-B3GRYnPQ.js",
+    "tests/tool-chain/dist/assets/xychartDiagram-2RQKCTM6-BHnCoJLS.js",
     "tests/tool-chain/dist/assets/yacas-BJ4BC0dw.js",
     "tests/tool-chain/dist/assets/yaml-Buea-lGh.js",
     "tests/tool-chain/dist/assets/z80-Hz9HOZM7.js",

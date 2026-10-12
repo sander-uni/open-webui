@@ -38,6 +38,26 @@ function chain(count: number): OutputItem[] {
 	]).flat();
 }
 
+it('supports disabling pagination without dropping any stored items', () => {
+	const output = chain(2000);
+	const full = selectOutputWindow(output, Infinity);
+	expect(full.hiddenSteps).toBe(0);
+	expect(full.output).toEqual(output);
+	expect(full.totalSteps).toBe(4000);
+});
+
+it('uses configurable recent page sizes and includes paired results', () => {
+	const output = chain(2000);
+	for (const limit of [10, 20, 100, 500]) {
+		const view = selectOutputWindow(output, limit);
+		expect(view.totalSteps - view.hiddenSteps).toBe(limit);
+		expect(view.output.filter((item) => item.type === 'function_call').length).toBe(limit / 2);
+		expect(view.output.filter((item) => item.type === 'function_call_output').length).toBe(
+			limit / 2
+		);
+	}
+});
+
 describe('tool-chain output window', () => {
 	it('keeps detail keys stable across prepended pages, including repeated provider ids', () => {
 		const output = chain(100).map((item) => ({ ...item, id: 'repeated-provider-id' }));

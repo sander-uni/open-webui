@@ -6,11 +6,9 @@ import { mkdir } from 'node:fs/promises';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const server = spawn(
-	'python3',
-	['-m', 'http.server', '5192', '--bind', '127.0.0.1', '--directory', 'tests/tool-chain/dist'],
-	{ stdio: ['ignore', 'pipe', 'pipe'] }
-);
+const server = spawn('python3', ['tests/tool-chain/backend_fixture.py', '--port', '5192'], {
+	stdio: ['ignore', 'pipe', 'pipe']
+});
 let browser;
 const errors = [];
 try {
@@ -103,9 +101,66 @@ try {
 		element.scrollTop = 0;
 	});
 	await page.screenshot({ path: 'demos/browser-check/approval.png' });
+
+	// Configure through the real admin panel and real router/SQLite fixture.
+	const openSettings = () => page.getByRole('button', { name: 'Admin: Custom Settings' }).click();
+	await openSettings();
+	const panel = page.getByRole('complementary', { name: 'Admin Custom Settings' });
+	const pageSize = panel.getByRole('spinbutton', { name: 'Steps per page' });
+	await pageSize.waitFor();
+	await pageSize.fill('20');
+	await panel
+		.getByRole('switch', { name: 'Load earlier steps automatically when scrolling up' })
+		.click();
+	await panel.getByRole('button', { name: 'Save', exact: true }).click();
+	await panel.getByRole('status').waitFor();
+	assert((await hidden()) >= 3970, 'Saved smaller page size did not apply to existing output');
+	await page.screenshot({ path: 'demos/browser-check/custom-settings.png' });
+	await panel.getByRole('button', { name: 'Close', exact: true }).click();
+	const beforeDisabledScroll = await hidden();
+	await root.evaluate((element) => {
+		element.scrollTop = 250;
+	});
+	await page.mouse.move(800, 400);
+	await page.mouse.wheel(0, -350);
+	await page.waitForTimeout(350);
+	assert.equal(await hidden(), beforeDisabledScroll, 'Auto-load still ran while disabled');
+	await page.getByRole('button', { name: 'Load earlier steps' }).click();
+	assert.equal(
+		await hidden(),
+		beforeDisabledScroll - 20,
+		'Manual loading did not use the configured page size'
+	);
+	await openSettings();
+	assert.equal(await pageSize.inputValue(), '20');
+	assert.equal(
+		await panel
+			.getByRole('switch', { name: 'Load earlier steps automatically when scrolling up' })
+			.getAttribute('aria-checked'),
+		'false'
+	);
+	await page.reload();
+	await pager.waitFor();
+	await page.waitForFunction(
+		() =>
+			Number(document.querySelector('.tool-chain-window')?.getAttribute('data-hidden-steps')) >=
+			3980
+	);
+	assert((await retained()).includes('Retained output items: 6001'));
+	await openSettings();
+	assert.equal(await pageSize.inputValue(), '20');
+	await panel.getByRole('switch', { name: 'Paginate tool chains' }).click();
+	await panel.getByRole('button', { name: 'Save', exact: true }).click();
+	await pager.waitFor({ state: 'detached' });
+	await page.getByText('command check-step-1', { exact: true }).waitFor();
+	assert((await retained()).includes('Retained output items: 6001'));
+	await panel.getByRole('switch', { name: 'Paginate tool chains' }).click();
+	await panel.getByRole('button', { name: 'Save', exact: true }).click();
+	await pager.waitFor();
+	assert((await hidden()) >= 3980, 'Re-enabling pagination did not restore a bounded window');
 	assert.deepEqual(errors, [], `Browser runtime errors: ${errors.join('; ')}`);
 	console.log(
-		'BROWSER CHECK: PASS — recent window, manual load, upward scroll, append while browsing, 150 tokens, snapshot reload, old approval, no runtime errors'
+		'BROWSER CHECK: PASS — recent window, manual load, upward scroll, append while browsing, 150 tokens, snapshot reload, old approval, persisted admin settings, configurable page size, auto-load off, manual loading, pagination toggle, no runtime errors'
 	);
 } finally {
 	await browser?.close();

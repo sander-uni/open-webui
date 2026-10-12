@@ -342,6 +342,7 @@ type Document = {
 };
 
 type Config = {
+	custom_settings?: import('$lib/utils/custom-settings').CustomSettings;
 	audio?: {
 		realtime?: { enabled: boolean; model: string; voice: string };
 		stt: { engine: string };

@@ -3,7 +3,8 @@
 	import ToolCallDisplay from '$lib/components/common/ToolCallDisplay.svelte';
 	import TerminalOutputFile from './TerminalOutputFile.svelte';
 	import { resolveChatMessageToolCall } from '$lib/apis/chats';
-	import { settings } from '$lib/stores';
+	import { config, settings } from '$lib/stores';
+	import { getToolChainDisplaySettings } from '$lib/utils/custom-settings';
 	import { toast } from 'svelte-sonner';
 
 	import Markdown from './Markdown.svelte';
@@ -75,20 +76,26 @@
 
 	let visibleSteps = OUTPUT_PAGE_SIZE;
 	let windowId = '';
-	$: if (windowId !== `${chatId}:${messageId}:${id}`) {
-		windowId = `${chatId}:${messageId}:${id}`;
-		visibleSteps = OUTPUT_PAGE_SIZE;
+	$: displaySettings = getToolChainDisplaySettings($config?.custom_settings);
+	$: nextWindowId = `${chatId}:${messageId}:${id}:${displaySettings.enabled}:${displaySettings.page_size}`;
+	$: if (windowId !== nextWindowId) {
+		windowId = nextWindowId;
+		visibleSteps = displaySettings.page_size;
 	}
-	$: outputWindow = selectOutputWindow(output, visibleSteps);
+	$: outputWindow = selectOutputWindow(output, displaySettings.enabled ? visibleSteps : Infinity);
 	$: displayItems = buildWindowDisplayItems(outputWindow.output) as OutputDisplayItem[];
 </script>
 
 {#key windowId}
-	<ToolChainPager
-		totalSteps={outputWindow.totalSteps}
-		hiddenSteps={outputWindow.hiddenSteps}
-		bind:visibleSteps
-	/>
+	{#if displaySettings.enabled}
+		<ToolChainPager
+			totalSteps={outputWindow.totalSteps}
+			hiddenSteps={outputWindow.hiddenSteps}
+			pageSize={displaySettings.page_size}
+			autoLoad={displaySettings.auto_load}
+			bind:visibleSteps
+		/>
+	{/if}
 {/key}
 
 {#each displayItems as displayItem (displayItem.id)}

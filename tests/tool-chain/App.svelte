@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { onMount, setContext, tick } from 'svelte';
 	import { writable } from 'svelte/store';
+	import english from '../../src/lib/i18n/locales/en-US/translation.json';
+	import CustomSettings from '../../src/lib/components/admin/Settings/CustomSettings.svelte';
+	import { getCustomSettings } from '../../src/lib/apis/custom-settings';
 	import StructuredOutputRenderer from '../../src/lib/components/chat/Messages/StructuredOutputRenderer.svelte';
 	import { settings, user, config } from '../../src/lib/stores';
 	import {
@@ -14,7 +17,9 @@
 		writable({
 			language: 'en-US',
 			t: (key: string, values: Record<string, unknown> = {}) =>
-				key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values[name] ?? name))
+				((english as Record<string, string>)[key] || key).replace(/\{\{(\w+)\}\}/g, (_, name) =>
+					String(values[name] ?? name)
+				)
 		})
 	);
 	settings.set({
@@ -68,6 +73,7 @@
 	let savedHash = '';
 	let shownSteps = 0;
 	let hiddenSteps = 0;
+	let showSettings = false;
 
 	async function refreshSnapshot() {
 		savedHash = getOutputText(output);
@@ -135,6 +141,7 @@
 	}
 
 	onMount(() => {
+		localStorage.token = 'fixture-admin';
 		const updateStats = () => {
 			const pager = document.querySelector<HTMLElement>('.tool-chain-window');
 			const total = Number(pager?.dataset.totalSteps ?? 0);
@@ -144,7 +151,12 @@
 		const observer = new MutationObserver(updateStats);
 		observer.observe(scrollContainer, { childList: true, subtree: true, attributes: true });
 		updateStats();
-		void mark('ready');
+		void getCustomSettings(localStorage.token)
+			.then((custom_settings) => {
+				config.update((current) => ({ ...current, custom_settings }) as any);
+				return tick();
+			})
+			.then(() => mark('ready'));
 		return () => {
 			observer.disconnect();
 			clearInterval(interval);
@@ -164,6 +176,7 @@
 			<button on:click={appendRound}>Append tool round</button>
 			<button on:click={pinApproval}>Pin oldest approval</button>
 			<button on:click={refreshSnapshot}>Reload saved snapshot</button>
+			<button on:click={() => (showSettings = !showSettings)}>Admin: Custom Settings</button>
 		</div>
 		<p data-testid="state">
 			Retained output items: {output.length} · Streamed tokens: {tokens} · Snapshot text preserved: {savedHash
@@ -183,6 +196,12 @@
 			allowEmbeds={false}
 		/>
 	</div>
+	{#if showSettings}
+		<aside aria-label="Admin Custom Settings">
+			<button class="close-settings" on:click={() => (showSettings = false)}>Close</button>
+			<CustomSettings />
+		</aside>
+	{/if}
 </main>
 
 <style>
@@ -190,7 +209,7 @@
 		margin: 0;
 		background: #f7f8fa;
 		color: #171717;
-		font-family: Arial, sans-serif;
+		font-family: Arial, sans-serif !important;
 	}
 	main {
 		padding: 24px;
@@ -210,6 +229,73 @@
 		display: flex;
 		gap: 10px;
 		margin: 14px 0;
+	}
+	aside {
+		position: fixed;
+		right: 24px;
+		top: 190px;
+		width: 450px;
+		height: 470px;
+		padding: 16px;
+		background: white;
+		border: 1px solid #cbd5e1;
+		box-shadow: 0 4px 24px #0002;
+		border-radius: 10px;
+		z-index: 10;
+	}
+	.close-settings {
+		position: absolute;
+		right: 16px;
+		top: 16px;
+	}
+	:global(aside form) {
+		display: flex;
+		height: 100%;
+		flex-direction: column;
+		gap: 12px;
+	}
+	:global(aside h2) {
+		font-size: 16px;
+		margin: 0;
+	}
+	:global(aside fieldset) {
+		border: none;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 18px;
+	}
+	:global(aside fieldset > div > div),
+	:global(aside fieldset > div:last-of-type) {
+		display: flex;
+		justify-content: space-between;
+	}
+	:global(aside [role='switch']) {
+		width: 38px;
+		height: 22px;
+		border-radius: 12px;
+		background: #d1d5db;
+		border: none;
+		cursor: pointer;
+	}
+	:global(aside [role='switch'][aria-checked='true']) {
+		background: #2563eb;
+	}
+	:global(aside input) {
+		display: block;
+		width: 90px;
+		padding: 6px;
+		margin: 8px 0;
+	}
+	:global(aside [type='submit']) {
+		margin-top: auto;
+		padding: 8px 18px;
+		cursor: pointer;
+	}
+	:global(aside nav button) {
+		padding: 6px;
+		border: 1px solid #cbd5e1;
+		background: #eff6ff;
 	}
 	.controls button {
 		border: 1px solid #cbd5e1;

@@ -158,6 +158,7 @@ from open_webui.routers import (
     channels,
     chats,
     configs,
+    custom_settings,
     evaluations,
     files,
     folders,
@@ -879,6 +880,7 @@ app.include_router(audio.router, prefix='/api/v1/audio', tags=['audio'])
 app.include_router(retrieval.router, prefix='/api/v1/retrieval', tags=['retrieval'])
 
 app.include_router(configs.router, prefix='/api/v1/configs', tags=['configs'])
+app.include_router(custom_settings.router, prefix='/api/v1/custom-settings', tags=['custom-settings'])
 
 app.include_router(auths.router, prefix='/api/v1/auths', tags=['auths'])
 app.include_router(mfa.router, prefix='/api/v1/auths/mfa', tags=['auths'])
@@ -2377,6 +2379,7 @@ async def get_app_config(request: Request):
         'version': VERSION,
         'default_locale': str(DEFAULT_LOCALE),
         'i18n': config.get('ui.i18n') or {},
+        'custom_settings': await custom_settings.get_custom_settings_values() if user else None,
         'oauth': {
             # Hide providers (and thus the login buttons / auto-redirect) when OAuth
             # is disabled, without clearing the admin's provider configuration.
