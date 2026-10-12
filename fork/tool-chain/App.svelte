@@ -23,7 +23,8 @@
 		})
 	);
 	settings.set({
-		expandDetails: true,
+		// ?collapsed starts with tool chains collapsed, Open WebUI's default.
+		expandDetails: !new URLSearchParams(location.search).has('collapsed'),
 		detectArtifacts: false,
 		renderMarkdownInAssistantMessages: false
 	});

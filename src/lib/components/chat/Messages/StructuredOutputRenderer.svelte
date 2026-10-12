@@ -82,12 +82,21 @@
 		windowId = nextWindowId;
 		visibleSteps = displaySettings.page_size;
 	}
-	$: outputWindow = selectOutputWindow(output, displaySettings.enabled ? visibleSteps : Infinity);
-	$: displayItems = buildWindowDisplayItems(outputWindow.output) as OutputDisplayItem[];
+	$: outputWindow = selectOutputWindow(output, displaySettings.enabled ? visibleSteps : Infinity, {
+		live: !done
+	});
+	$: displayItems = buildWindowDisplayItems(
+		outputWindow.output,
+		outputWindow
+	) as OutputDisplayItem[];
+	// When hidden steps continue the first group, page inside it: the controls then only
+	// show (and only auto-load) while that group is expanded.
+	$: pagerInGroup =
+		displaySettings.enabled && !!outputWindow.hiddenRun && displayItems[0]?.type === 'detail_group';
 </script>
 
 {#key windowId}
-	{#if displaySettings.enabled}
+	{#if displaySettings.enabled && !pagerInGroup}
 		<ToolChainPager
 			totalSteps={outputWindow.totalSteps}
 			hiddenSteps={outputWindow.hiddenSteps}
@@ -98,7 +107,7 @@
 	{/if}
 {/key}
 
-{#each displayItems as displayItem (displayItem.id)}
+{#each displayItems as displayItem, displayIndex (displayItem.id)}
 	{#if displayItem.type === 'message'}
 		{#if renderMarkdown}
 			<div class="markdown-prose">
@@ -137,8 +146,20 @@
 			resolvable={!!chatId && !!messageId && save}
 			{resolvingCallId}
 			onResolve={resolveToolCall}
+			hiddenSummary={displayIndex === 0 ? outputWindow.hiddenRun : null}
 		>
 			<div slot="content">
+				{#if displayIndex === 0 && pagerInGroup}
+					{#key windowId}
+						<ToolChainPager
+							totalSteps={outputWindow.totalSteps}
+							hiddenSteps={outputWindow.hiddenSteps}
+							pageSize={displaySettings.page_size}
+							autoLoad={displaySettings.auto_load}
+							bind:visibleSteps
+						/>
+					{/key}
+				{/if}
 				{#each displayItem.tokens as detailToken, detailIndex (getOutputDetailKey(detailToken, detailIndex))}
 					{#if detailToken.attributes?.type === 'tool_calls'}
 						<ToolCallDisplay

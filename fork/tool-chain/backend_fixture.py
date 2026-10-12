@@ -93,7 +93,7 @@ def create_fixture(database: Path) -> FastAPI:
                 await asyncio.sleep(0.1)
         return {'ok': True}
 
-    app.mount('/', StaticFiles(directory=ROOT / 'tests/tool-chain/dist', html=True))
+    app.mount('/', StaticFiles(directory=ROOT / 'fork/tool-chain/dist', html=True))
     return app
 
 

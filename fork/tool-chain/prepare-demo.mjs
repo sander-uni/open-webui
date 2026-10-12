@@ -12,6 +12,6 @@ async function files(directory) {
 
 const path = 'demos/requirements.json';
 const catalog = JSON.parse(await readFile(path, 'utf8'));
-catalog.artifacts = await files('tests/tool-chain/dist');
+catalog.artifacts = await files('fork/tool-chain/dist');
 await writeFile(path, `${JSON.stringify(catalog, null, 2)}\n`);
 console.log(`Prepared ${catalog.artifacts.length} runtime artifacts for recording.`);
