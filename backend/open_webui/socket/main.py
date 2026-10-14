@@ -57,6 +57,7 @@ from open_webui.utils.auth import get_verified_user_by_token
 from open_webui.utils.chat_id import is_saved_chat_id
 from open_webui.utils.json_codec import SOCKETIO_JSON, JSONCodec, dumps_bytes
 from open_webui.utils.misc import get_output_text
+from open_webui.utils.output_tail import apply_output_tail  # CUSTOM
 from open_webui.utils.redis import (
     build_sentinel_url,
     get_redis_connection,
@@ -1364,6 +1365,10 @@ async def get_event_emitter(request_info, update_db=True):
                 data = event_data.get('data') or {}
                 if isinstance(data.get('output'), list):
                     output = copy.deepcopy(data['output'])
+                elif 'output_tail' in data:  # CUSTOM: tail-only update (utils/output_tail.py)
+                    output = (
+                        apply_output_tail(output, {**data, 'output_tail': copy.deepcopy(data['output_tail'])}) or output
+                    )
                 elif event_type == 'response:completion':
                     from open_webui.utils.middleware import handle_responses_streaming_event
 

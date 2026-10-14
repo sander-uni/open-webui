@@ -144,6 +144,7 @@ from open_webui.utils.task import (
     tools_function_calling_generation_template,
 )
 from open_webui.utils.tool_approval import complete_tool_call, pending_tool_calls
+from open_webui.utils.output_tail import client_accepts_output_tail, output_tail_data  # CUSTOM
 from open_webui.utils.tool_search import apply_tool_search
 from open_webui.utils.tools import (
     connect_mcp_server,
@@ -4469,6 +4470,7 @@ async def streaming_chat_response_handler(response, ctx):
     chat_id = metadata.get('chat_id') or ''
     save_to_chat = is_saved_chat_id(chat_id)
     continuing = bool(metadata.get('assistant_message_id'))
+    send_output_tail = continuing and client_accepts_output_tail(request)  # CUSTOM
 
     extra_params = {
         '__event_emitter__': event_emitter,
@@ -5025,15 +5027,28 @@ async def streaming_chat_response_handler(response, ctx):
                         nonlocal last_delta_key
 
                         if delta_count >= threshold and last_delta_data:
+                            stream_output = full_output() if continuing else None
                             await event_emitter(
                                 {
                                     'type': 'chat:completion' if continuing else 'response:completion',
-                                    'data': {'output': full_output(), 'type': last_delta_data.get('type')}
+                                    'data': {
+                                        # CUSTOM: only the changed tail for clients that accept it
+                                        **(
+                                            (
+                                                send_output_tail
+                                                and output_tail_data(
+                                                    stream_output, output, len(prior_output), last_delta_data
+                                                )
+                                            )
+                                            or {'output': stream_output}
+                                        ),
+                                        'type': last_delta_data.get('type'),
+                                    }
                                     if continuing
                                     else last_delta_data,
                                 }
                             )
-                            await save_current_response_stream()
+                            await save_current_response_stream(stream_output)
                             delta_count = 0
                             last_delta_data = None
                             last_delta_type = None

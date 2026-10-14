@@ -23,7 +23,8 @@
 		})
 	);
 	settings.set({
-		expandDetails: true,
+		// ?collapsed starts with tool chains collapsed, Open WebUI's default.
+		expandDetails: !new URLSearchParams(location.search).has('collapsed'),
 		detectArtifacts: false,
 		renderMarkdownInAssistantMessages: false
 	});
@@ -59,6 +60,22 @@
 			]
 		}
 	]).flat();
+	// ?notes adds a short text line after every round, like a real agent run; each line
+	// starts a new collapsible group.
+	if (new URLSearchParams(location.search).has('notes')) {
+		output = output.flatMap((item, index) =>
+			item.type === 'function_call_output'
+				? [
+						item,
+						{
+							type: 'message',
+							id: `note-${index}`,
+							content: [{ type: 'output_text', text: `Checked ${item.call_id}.` }]
+						}
+					]
+				: [item]
+		);
+	}
 	output.push({
 		type: 'message',
 		id: 'live',
@@ -318,7 +335,7 @@
 		padding: 6px;
 		cursor: pointer;
 	}
-	:global(.tool-chain-page-boundary span) {
+	:global(.tool-chain-page-boundary > div > span) {
 		margin-right: 14px;
 	}
 	:global(svg) {

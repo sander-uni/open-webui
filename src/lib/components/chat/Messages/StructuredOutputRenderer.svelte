@@ -75,30 +75,48 @@
 	} text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition`;
 
 	let visibleSteps = OUTPUT_PAGE_SIZE;
+	let autoGrown = 0;
 	let windowId = '';
 	$: displaySettings = getToolChainDisplaySettings($config?.custom_settings);
 	$: nextWindowId = `${chatId}:${messageId}:${id}:${displaySettings.enabled}:${displaySettings.page_size}`;
 	$: if (windowId !== nextWindowId) {
 		windowId = nextWindowId;
 		visibleSteps = displaySettings.page_size;
+		autoGrown = 0;
 	}
-	$: outputWindow = selectOutputWindow(output, displaySettings.enabled ? visibleSteps : Infinity);
-	$: displayItems = buildWindowDisplayItems(outputWindow.output) as OutputDisplayItem[];
+	$: outputWindow = selectOutputWindow(output, displaySettings.enabled ? visibleSteps : Infinity, {
+		live: !done
+	});
+	$: displayItems = buildWindowDisplayItems(
+		outputWindow.output,
+		outputWindow
+	) as OutputDisplayItem[];
+	// When hidden steps continue the first group, page inside it: the controls then only
+	// show (and only auto-load) while that group is expanded.
+	// Only when every hidden step belongs to that group; otherwise hidden steps span many
+	// groups and messages, and the pager (with its totals) goes above the reply.
+	$: pagerInGroup =
+		displaySettings.enabled &&
+		outputWindow.hiddenSteps > 0 &&
+		outputWindow.hiddenRun?.steps === outputWindow.hiddenSteps &&
+		displayItems[0]?.type === 'detail_group';
 </script>
 
 {#key windowId}
-	{#if displaySettings.enabled}
+	{#if displaySettings.enabled && !pagerInGroup}
 		<ToolChainPager
 			totalSteps={outputWindow.totalSteps}
+			hiddenTotals={outputWindow.hiddenTotals}
 			hiddenSteps={outputWindow.hiddenSteps}
 			pageSize={displaySettings.page_size}
 			autoLoad={displaySettings.auto_load}
 			bind:visibleSteps
+			bind:autoGrown
 		/>
 	{/if}
 {/key}
 
-{#each displayItems as displayItem (displayItem.id)}
+{#each displayItems as displayItem, displayIndex (displayItem.id)}
 	{#if displayItem.type === 'message'}
 		{#if renderMarkdown}
 			<div class="markdown-prose">
@@ -137,8 +155,22 @@
 			resolvable={!!chatId && !!messageId && save}
 			{resolvingCallId}
 			onResolve={resolveToolCall}
+			hiddenSummary={displayIndex === 0 ? outputWindow.hiddenRun : null}
 		>
 			<div slot="content">
+				{#if displayIndex === 0 && pagerInGroup}
+					{#key windowId}
+						<ToolChainPager
+							totalSteps={outputWindow.totalSteps}
+							hiddenTotals={outputWindow.hiddenTotals}
+							hiddenSteps={outputWindow.hiddenSteps}
+							pageSize={displaySettings.page_size}
+							autoLoad={displaySettings.auto_load}
+							bind:visibleSteps
+							bind:autoGrown
+						/>
+					{/key}
+				{/if}
 				{#each displayItem.tokens as detailToken, detailIndex (getOutputDetailKey(detailToken, detailIndex))}
 					{#if detailToken.attributes?.type === 'tool_calls'}
 						<ToolCallDisplay

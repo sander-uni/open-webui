@@ -92,6 +92,7 @@
 		updateChatFolderIdById
 	} from '$lib/apis/chats';
 	import { generateOpenAIChatCompletion, getErrorMessage } from '$lib/apis/openai';
+	import { applyOutputTail } from '$lib/utils/output-tail'; // CUSTOM
 	import { processUrl, processWebSearch } from '$lib/apis/retrieval';
 	import {
 		getAndUpdateUserLocation,
@@ -3265,7 +3266,8 @@
 	};
 
 	const chatCompletionEventHandler = async (data, message, chatId, shared = false) => {
-		const { id, done, choices, content, output, sources, selected_model_id, error, usage } = data;
+		const { id, done, choices, content, sources, selected_model_id, error, usage } = data;
+		const output = data.output ?? applyOutputTail(message.output, data); // CUSTOM: tail-only updates
 
 		if (error) {
 			if (shared) message.error = error;

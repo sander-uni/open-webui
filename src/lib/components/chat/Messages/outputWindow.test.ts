@@ -109,13 +109,15 @@ describe('tool-chain output window', () => {
 			{ type: 'function_call_output', call_id: 'first', output: [{ text: 'one-result' }] }
 		];
 		const window = selectOutputWindow(output, 1);
-		expect(window.output.map((item) => item.type)).toEqual([
-			'reasoning',
-			'function_call',
-			'function_call_output'
+		// Both parallel calls of the turn stay together with their results and reasoning.
+		expect(window.output.map((item) => item.call_id ?? item.id)).toEqual([
+			'reason',
+			'first',
+			'last',
+			'last',
+			'first'
 		]);
 		expect(JSON.stringify(buildOutputDisplayItems(window.output))).toContain('two-result');
-		expect(window.output).not.toContain(output[4]);
 	});
 
 	it('pins old approvals and executing calls while still paging completed history', () => {
@@ -229,7 +231,21 @@ describe('tool-chain output window', () => {
 	});
 
 	it('handles missing ids, empty outputs, snapshots and message replacements', () => {
-		expect(selectOutputWindow([])).toEqual({ output: [], totalSteps: 0, hiddenSteps: 0 });
+		expect(selectOutputWindow([])).toEqual({
+			output: [],
+			totalSteps: 0,
+			hiddenSteps: 0,
+			hiddenTotals: {
+				toolCallCount: 0,
+				toolCounts: {},
+				reasoningCount: 0,
+				messageCount: 0,
+				codeInterpreterCount: 0,
+				failedCount: 0
+			},
+			hiddenRun: null,
+			runStart: 0
+		});
 		const output = [
 			{ type: 'message', content: [{ text: 'one' }] },
 			...chain(30),
@@ -241,5 +257,186 @@ describe('tool-chain output window', () => {
 		expect(
 			selectOutputWindow([{ type: 'message', content: [{ text: 'replacement' }] }]).hiddenSteps
 		).toBe(0);
+	});
+});
+
+describe('tool-chain window fixes', () => {
+	const call = (id: string, extra: Partial<OutputItem> = {}): OutputItem => ({
+		type: 'function_call',
+		id,
+		call_id: id,
+		name: 'run_command',
+		status: 'completed',
+		arguments: '{}',
+		...extra
+	});
+	const result = (id: string, extra: Partial<OutputItem> = {}): OutputItem => ({
+		type: 'function_call_output',
+		id: `out-${id}`,
+		call_id: id,
+		output: [{ type: 'input_text', text: `result ${id}` }],
+		...extra
+	});
+	const reason = (id: string): OutputItem => ({
+		type: 'reasoning',
+		id,
+		status: 'completed',
+		content: [{ text: id }]
+	});
+	const continuation = (id: string): OutputItem => ({
+		type: 'message',
+		id,
+		status: 'in_progress',
+		role: 'assistant',
+		content: [{ type: 'output_text', text: '' }]
+	});
+
+	it('does not split parallel calls at a page edge', () => {
+		const output = [
+			reason('r0'),
+			call('a'),
+			call('b'),
+			result('a'),
+			result('b'),
+			continuation('m0'),
+			reason('r1'),
+			call('c'),
+			result('c')
+		];
+		// Page of 3 steps: r1, c and one of the parallel calls.
+		const ids = selectOutputWindow(output, 3).output.map((item) => item.id);
+		expect(ids).toEqual(['r0', 'a', 'b', 'out-a', 'out-b', 'r1', 'c', 'out-c']);
+	});
+
+	it('does not attach reasoning from an earlier round to a later call', () => {
+		// Rounds without reasoning: r0 belongs to a only.
+		const output = [reason('r0'), call('a'), result('a'), call('b'), result('b')];
+		const ids = selectOutputWindow(output, 1).output.map((item) => item.id);
+		expect(ids).toEqual(['b', 'out-b']);
+	});
+
+	it('does not count empty continuation messages as steps', () => {
+		const output = [reason('r0'), call('a'), result('a'), continuation('m0')];
+		const window = selectOutputWindow(output, 50);
+		expect(window.totalSteps).toBe(2);
+		expect(window.hiddenSteps).toBe(0);
+	});
+
+	it('pins approvals always, but unfinished calls only while the reply is live', () => {
+		const output = chain(100);
+		output.splice(5, 1); // c1 lost its result, as after a crash
+		output[1] = { ...output[1], status: 'requires_approval' };
+		output.splice(2, 1); // c0 waits for approval, no result
+		const live = selectOutputWindow(output, 10, { live: true }).output.map((item) => item.id);
+		const done = selectOutputWindow(output, 10, { live: false }).output.map((item) => item.id);
+		expect(live).toContain('c0');
+		expect(live).toContain('c1');
+		expect(done).toContain('c0');
+		expect(done).not.toContain('c1');
+	});
+
+	it('summarizes hidden steps of the first group for the collapsed header', () => {
+		const output = chain(300);
+		output[2] = result('c0', { embeds: ['<b>chart</b>'] });
+		output[4] = call('c1', { name: 'read_file', status: 'rejected' });
+		const window = selectOutputWindow(output, 50);
+		const run = window.hiddenRun!;
+		expect(run.steps).toBe(window.hiddenSteps);
+		expect(run.toolCallCount).toBe(275);
+		expect(run.toolCounts).toEqual({ run_command: 274, read_file: 1 });
+		expect(Object.keys(run.toolCounts)[0]).toBe('run_command');
+		expect(run.rejected).toBe(true);
+		expect(run.embeds).toEqual([
+			{ name: 'run_command', embed: '<b>chart</b>', args: '{"step":0}' }
+		]);
+		expect(window.runStart).toBe(0);
+	});
+
+	it('stops the hidden summary at a message with text', () => {
+		const output = [
+			...chain(10),
+			{ type: 'message', id: 'text', content: [{ text: 'progress note' }] },
+			...chain(60).map((item) => ({ ...item, id: `late-${item.id}` }))
+		];
+		const window = selectOutputWindow(output, 50);
+		expect(window.hiddenRun?.toolCallCount).toBe(35);
+		expect(window.runStart).toBe(31);
+	});
+
+	it('keeps the first group id stable when a page is prepended or the window slides', () => {
+		const output = chain(200);
+		const idOf = (limit: number, items = output) => {
+			const window = selectOutputWindow(items, limit);
+			return buildWindowDisplayItems(window.output, window)[0].id;
+		};
+		expect(idOf(50)).toBe('detail-0');
+		expect(idOf(100)).toBe('detail-0');
+		expect(idOf(50, [...output, ...chain(5).map((item) => ({ ...item, id: `n${item.id}` }))])).toBe(
+			'detail-0'
+		);
+	});
+
+	it('renders a lone first step that continues hidden steps as a group', () => {
+		const output = chain(30);
+		const window = selectOutputWindow(output, 1);
+		const items = buildWindowDisplayItems(window.output, window);
+		expect(items[0].type).toBe('detail_group');
+		expect(window.hiddenRun?.steps).toBe(window.hiddenSteps);
+	});
+
+	it('still never reads hidden reasoning or result bodies while summarizing', () => {
+		const output = chain(500);
+		for (const index of [0, 3, 30]) {
+			Object.defineProperty(output[index], 'content', {
+				get: () => {
+					throw new Error('hidden reasoning read');
+				}
+			});
+		}
+		Object.defineProperty(output[2], 'output', {
+			get: () => {
+				throw new Error('hidden result read');
+			}
+		});
+		const window = selectOutputWindow(output);
+		expect(() => buildWindowDisplayItems(window.output, window)).not.toThrow();
+		expect(window.hiddenRun?.toolCallCount).toBe(475);
+	});
+
+	it('counts hidden steps between a pinned approval and the recent page', () => {
+		const output = chain(200);
+		output[1] = { ...output[1], status: 'pending' };
+		output.splice(2, 1);
+		const window = selectOutputWindow(output, 50, { live: false });
+		expect(window.output[1].id).toBe('c0');
+		// Everything not shown belongs to the one group the window renders.
+		expect(window.hiddenRun?.steps).toBe(window.hiddenSteps);
+		expect(window.hiddenRun?.toolCallCount).toBe(200 - 1 - 25);
+	});
+
+	it('totals every hidden step when text lines split the chain into many groups', () => {
+		// Like a real agent run: a short note after every tool call.
+		const output: OutputItem[] = [];
+		for (let n = 0; n < 400; n++) {
+			output.push(
+				reason(`r${n}`),
+				call(`c${n}`, { name: n % 4 === 0 ? 'read_file' : 'run_command' }),
+				result(`c${n}`),
+				{ type: 'message', id: `m${n}`, content: [{ type: 'output_text', text: `note ${n}` }] }
+			);
+		}
+		output[1] = { ...output[1], status: 'failed' };
+		const window = selectOutputWindow(output, 50, { live: false });
+		const totals = window.hiddenTotals;
+		const visibleCalls = window.output.filter((item) => item.type === 'function_call').length;
+		expect(totals.toolCallCount).toBe(400 - visibleCalls);
+		expect(totals.toolCounts.read_file + totals.toolCounts.run_command).toBe(totals.toolCallCount);
+		expect(Object.keys(totals.toolCounts)[0]).toBe('read_file');
+		expect(totals.reasoningCount + totals.messageCount + totals.toolCallCount).toBe(
+			window.hiddenSteps
+		);
+		expect(totals.failedCount).toBe(1);
+		// The first group's own hidden run is tiny; the totals are not.
+		expect(window.hiddenRun?.toolCallCount ?? 0).toBeLessThan(2);
 	});
 });

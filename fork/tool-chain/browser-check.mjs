@@ -6,7 +6,7 @@ import { mkdir } from 'node:fs/promises';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const server = spawn('python3', ['tests/tool-chain/backend_fixture.py', '--port', '5192'], {
+const server = spawn('python3', ['fork/tool-chain/backend_fixture.py', '--port', '5192'], {
 	stdio: ['ignore', 'pipe', 'pipe']
 });
 let browser;
@@ -49,12 +49,12 @@ try {
 	assert((await retained()).includes('Retained output items: 6001'));
 	await mkdir('demos/browser-check', { recursive: true });
 	await page.screenshot({ path: 'demos/browser-check/recent.png' });
-	const oldCall = page.locator('#fixture-detail-group-0-1-tool-call');
+	const oldCall = page.locator('#fixture-detail-0-1-tool-call');
 	await oldCall.locator('[role="button"]').first().click();
 	await page.getByText('command check-step-1976', { exact: true }).waitFor({ state: 'detached' });
 	assert.equal(await page.getByText('command check-step-1976', { exact: true }).count(), 0);
 
-	await page.getByRole('button', { name: 'Load earlier steps' }).click();
+	await page.getByRole('button', { name: /^Load [\d,]+ earlier steps$/ }).click();
 	assert((await hidden()) < initial);
 	assert((await retained()).includes('Retained output items: 6001'));
 	assert.equal(
@@ -125,7 +125,7 @@ try {
 	await page.mouse.wheel(0, -350);
 	await page.waitForTimeout(350);
 	assert.equal(await hidden(), beforeDisabledScroll, 'Auto-load still ran while disabled');
-	await page.getByRole('button', { name: 'Load earlier steps' }).click();
+	await page.getByRole('button', { name: /^Load [\d,]+ earlier steps$/ }).click();
 	assert.equal(
 		await hidden(),
 		beforeDisabledScroll - 20,
