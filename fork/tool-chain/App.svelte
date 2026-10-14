@@ -31,7 +31,9 @@
 	user.set({ id: 'fixture', name: 'Fixture', role: 'admin' } as any);
 	config.set({ features: {} } as any);
 
-	const count = 2000;
+	const collision = new URLSearchParams(location.search).has('collision');
+	const demoZoom = new URLSearchParams(location.search).has('zoom');
+	const count = collision ? 30 : 2000;
 	let output: OutputItem[] = Array.from({ length: count }, (_, index) => [
 		{
 			type: 'reasoning',
@@ -78,8 +80,10 @@
 	}
 	output.push({
 		type: 'message',
-		id: 'live',
-		content: [{ type: 'output_text', text: 'Live response: ' }],
+		id: collision ? 'detail-0' : 'live',
+		content: [
+			{ type: 'output_text', text: collision ? 'Collision test message' : 'Live response: ' }
+		],
 		status: 'in_progress'
 	});
 	let messageId = 'fixture-message';
@@ -170,6 +174,7 @@
 		updateStats();
 		void getCustomSettings(localStorage.token)
 			.then((custom_settings) => {
+				if (collision) custom_settings.tool_chain_display.page_size = 10;
 				config.update((current) => ({ ...current, custom_settings }) as any);
 				return tick();
 			})
@@ -185,8 +190,10 @@
 	<header>
 		<h1>OpenWebUI · tool-chain paging</h1>
 		<p>
-			Production renderer · 2,000 retained tool calls · {shownSteps} displayed steps · {hiddenSteps} earlier
-			steps hidden
+			Production renderer · {count.toLocaleString()} retained tool calls · {shownSteps} displayed steps
+			· {hiddenSteps} earlier steps hidden
+			{#if demoZoom}
+				· Demo zoom 65%{/if}
 		</p>
 		<div class="controls">
 			<button on:click={appendTokens}>Stream 150 tokens</button>
@@ -202,16 +209,18 @@
 		</p>
 	</header>
 	<div class="scroll-container" id="messages-container" bind:this={scrollContainer}>
-		<StructuredOutputRenderer
-			id="fixture"
-			chatId="fixture-chat"
-			{messageId}
-			{output}
-			done={false}
-			save={true}
-			renderMarkdown={false}
-			allowEmbeds={false}
-		/>
+		<div style={demoZoom ? 'zoom: 0.65' : undefined}>
+			<StructuredOutputRenderer
+				id="fixture"
+				chatId="fixture-chat"
+				{messageId}
+				{output}
+				done={false}
+				save={true}
+				renderMarkdown={false}
+				allowEmbeds={false}
+			/>
+		</div>
 	</div>
 	{#if showSettings}
 		<aside aria-label="Admin Custom Settings">

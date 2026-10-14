@@ -182,3 +182,11 @@ def test_header_opt_in():
     assert output_tail.client_accepts_output_tail(Request({'x-openwebui-output-tail': '1'}))
     assert not output_tail.client_accepts_output_tail(Request({}))
     assert not output_tail.client_accepts_output_tail(object())
+
+
+def test_rejects_invalid_tail_indexes_and_inconsistent_lengths():
+    current = [{'id': 'keep'}, {'id': 'old'}]
+    for start in (-1, True, 1.5):
+        assert output_tail.apply_output_tail(current, {'output_tail': [], 'output_start': start}) is None
+    assert output_tail.apply_output_tail(current, {'output_tail': [{'id': 'new'}], 'output_start': 1, 'output_length': 100}) is None
+    assert current == [{'id': 'keep'}, {'id': 'old'}]

@@ -1,7 +1,7 @@
 import { WEBUI_API_BASE_URL } from '$lib/constants';
 import type { CustomSettings } from '$lib/utils/custom-settings';
 
-async function request(token: string, settings?: CustomSettings): Promise<CustomSettings> {
+async function request(token: string, settings?: Partial<CustomSettings>): Promise<CustomSettings> {
 	const response = await fetch(`${WEBUI_API_BASE_URL}/custom-settings`, {
 		method: settings ? 'POST' : 'GET',
 		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -19,5 +19,5 @@ async function request(token: string, settings?: CustomSettings): Promise<Custom
 }
 
 export const getCustomSettings = (token: string) => request(token);
-export const setCustomSettings = (token: string, settings: CustomSettings) =>
+export const setCustomSettings = (token: string, settings: Partial<CustomSettings>) =>
 	request(token, settings);

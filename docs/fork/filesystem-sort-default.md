@@ -9,8 +9,8 @@ The setting is now under **Settings → Admin → Custom Settings → Filesystem
 Filesystem sort default**. The initial default is **Date modified — newest
 first**. Other choices are oldest first, Name A to Z / Z to A and Size largest
 first / smallest first. The existing comparator keeps folders before files and
-sorts each group separately. Entries without modification metadata keep the
-existing fallback behavior.
+sorts each group separately. Entries without modification metadata appear after
+entries with a timestamp, with names used to break ties.
 
 The preference is instance-wide and uses the existing configuration database at
 `custom.filesystem_sort_default`. An admin save updates the current browser's
@@ -29,7 +29,8 @@ There are no database migrations or new runtime dependencies.
 This change is based on Claude's completed rendering branch. It does not modify
 the tool-chain renderer, stream handling or inference requests. The filesystem
 integration is an import and a small default-initialization block in
-`FileNav.svelte`; the comparator and existing Sort menu are unchanged. The new
+`FileNav.svelte`; numeric sorting now uses a separate helper with a consistent
+fallback for missing metadata. The existing Sort menu is unchanged. The new
 filesystem form lives in its own component within the existing custom category.
 
 ## Verification

@@ -85,7 +85,8 @@
 		autoGrown = 0;
 	}
 	$: outputWindow = selectOutputWindow(output, displaySettings.enabled ? visibleSteps : Infinity, {
-		live: !done
+		live: !done,
+		includeEmbeds: allowEmbeds
 	});
 	$: displayItems = buildWindowDisplayItems(
 		outputWindow.output,

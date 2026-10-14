@@ -26,3 +26,15 @@ it('appends a new item and ignores events it cannot apply', () => {
 		{ id: 'a' }
 	]);
 });
+
+it('rejects tail events whose declared length does not match their payload', () => {
+	const current = [{ id: 'keep' }, { id: 'old' }];
+	expect(
+		applyOutputTail(current, {
+			output_tail: [{ id: 'new' }],
+			output_start: 1,
+			output_length: 100
+		} as any)
+	).toBeUndefined();
+	expect(current).toEqual([{ id: 'keep' }, { id: 'old' }]);
+});

@@ -91,7 +91,22 @@ try {
 	await openSettings();
 	assert.equal(await select.inputValue(), 'date_desc');
 	await page.screenshot({ path: 'fork/filesystem-sort/demos/browser-check/settings.png' });
+	// Another administrator saves while this form still holds its earlier snapshot.
+	const external = await page.request.post(`${url}/api/v1/custom-settings`, {
+		headers: { Authorization: 'Bearer fixture-admin' },
+		data: { tool_chain_display: { enabled: true, page_size: 100, auto_load: true } }
+	});
+	assert(external.ok());
 	await save('name_asc');
+	const afterConcurrent = await page.request.get(`${url}/api/v1/custom-settings`, {
+		headers: { Authorization: 'Bearer fixture-admin' }
+	});
+	assert.equal(
+		(await afterConcurrent.json()).tool_chain_display.page_size,
+		100,
+		'Filesystem save overwrote another admin’s page size'
+	);
+
 	await expectOrder(nameAsc);
 	await page.getByRole('button', { name: 'Reopen filesystem' }).click();
 	await expectOrder(nameAsc);

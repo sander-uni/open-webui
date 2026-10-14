@@ -47,6 +47,7 @@
 	import { copyToClipboard } from '$lib/utils';
 	import { normalizeDocumentTargetPage } from '$lib/utils/documentPreview';
 	import { getFilesystemSortDefault, type FilesystemSortDefault } from '$lib/utils/custom-settings';
+	import { sortFileEntries } from '$lib/utils/filesystem-sort';
 
 	import Spinner from '../common/Spinner.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
@@ -177,28 +178,7 @@
 		return normalizePath(`${parent}${child}`);
 	};
 
-	const sortEntries = (items: FileEntry[], mode: SortMode, asc: boolean): FileEntry[] => {
-		return [...items].sort((a, b) => {
-			// Directories always first
-			if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
-			if (mode === 'date') {
-				if (a.modified !== undefined && b.modified !== undefined) {
-					return asc ? a.modified - b.modified : b.modified - a.modified;
-				}
-				const cmp = a.name.localeCompare(b.name);
-				return asc ? cmp : -cmp;
-			}
-			if (mode === 'size') {
-				if (a.size !== undefined && b.size !== undefined) {
-					return asc ? a.size - b.size : b.size - a.size;
-				}
-				const cmp = a.name.localeCompare(b.name);
-				return asc ? cmp : -cmp;
-			}
-			const cmp = a.name.localeCompare(b.name);
-			return asc ? cmp : -cmp;
-		});
-	};
+	const sortEntries = sortFileEntries;
 
 	const toggleSort = (mode: SortMode) => {
 		if (sortBy === mode) {
