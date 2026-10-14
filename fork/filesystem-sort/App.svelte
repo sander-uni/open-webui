@@ -31,6 +31,17 @@
 	let instance = 0;
 	let order = '';
 	let error = '';
+	let externalSaved = false;
+	async function otherAdmin() {
+		const response = await fetch('/api/v1/custom-settings', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Authorization: 'Bearer fixture-admin' },
+			body: JSON.stringify({
+				tool_chain_display: { enabled: true, page_size: 100, auto_load: true }
+			})
+		});
+		externalSaved = response.ok;
+	}
 	let browserPanel: HTMLElement;
 
 	function unrelatedConfigChange() {
@@ -103,6 +114,9 @@
 			<button on:click={() => instance++}>Reopen filesystem</button>
 			<button on:click={() => location.reload()}>Reload page</button>
 			<button on:click={unrelatedConfigChange}>Update other config</button>
+			{#if new URLSearchParams(location.search).has('review')}<button on:click={otherAdmin}
+					>{externalSaved ? 'Other admin saved 100 steps' : 'Other admin: 100 steps'}</button
+				>{/if}
 		</div>
 	</header>
 	{#if error}<p role="alert">{error}</p>{/if}

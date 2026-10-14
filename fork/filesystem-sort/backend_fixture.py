@@ -15,7 +15,7 @@ shared = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shared)
 
 
-def create_app(database: Path, files: Path, initial_sort: str = 'date_desc'):
+def create_app(database: Path, files: Path, initial_sort: str = 'date_desc', missing_metadata: bool = False):
     files.mkdir(exist_ok=True)
     for name, modified, size in [('oldest.txt', 1700000000, 100), ('middle.txt', 1710000000, 50), ('newest.txt', 1720000000, 30)]:
         target = files / name
@@ -45,11 +45,15 @@ def create_app(database: Path, files: Path, initial_sort: str = 'date_desc'):
         target = (files / directory.lstrip('/')).resolve()
         if not target.is_relative_to(files.resolve()) or not target.is_dir():
             return JSONResponse({'detail': 'Fixture directory not found'}, status_code=404)
-        return {'writable': False, 'entries': [
+        entries = [
             {'name': entry.name, 'type': 'directory' if entry.is_dir() else 'file',
              'modified': entry.stat().st_mtime, 'size': entry.stat().st_size, 'writable': False}
             for entry in target.iterdir()
-        ]}
+        ]
+        if missing_metadata:
+            for entry in entries:
+                if entry['name'] == 'middle.txt': entry.pop('modified', None)
+        return {'writable': False, 'entries': entries}
 
     @app.get('/terminal/ports')
     async def ports():
@@ -65,7 +69,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=5195)
     parser.add_argument('--sort', default='date_desc')
+    parser.add_argument('--missing-metadata', action='store_true')
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='filesystem-sort-') as temporary:
         path = Path(temporary)
-        uvicorn.run(create_app(path / 'config.db', path / 'files', args.sort), host='127.0.0.1', port=args.port, log_level='warning', loop='asyncio')
+        uvicorn.run(create_app(path / 'config.db', path / 'files', args.sort, args.missing_metadata), host='127.0.0.1', port=args.port, log_level='warning', loop='asyncio')

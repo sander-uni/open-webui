@@ -61,8 +61,11 @@ def apply_output_tail(output: list | None, data: dict) -> list | None:
     """Merge a tail payload into a previously received full output (shared viewers)."""
     tail = data.get('output_tail')
     start = data.get('output_start')
-    if not isinstance(tail, list) or not isinstance(start, int) or not isinstance(output, list):
+    if not isinstance(tail, list) or type(start) is not int or not isinstance(output, list):
         return None
-    if start > len(output):
+    if not 0 <= start <= len(output):
+        return None
+    length = data.get('output_length')
+    if 'output_length' in data and (type(length) is not int or length != start + len(tail)):
         return None
     return output[:start] + tail

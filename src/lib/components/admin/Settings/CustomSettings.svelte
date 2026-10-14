@@ -9,7 +9,9 @@
 		DEFAULT_TOOL_CHAIN_DISPLAY,
 		getToolChainDisplaySettings,
 		DEFAULT_FILESYSTEM_SORT,
-		getFilesystemSortDefault
+		getFilesystemSortDefault,
+		getCustomSettingsUpdates,
+		type CustomSettings
 	} from '$lib/utils/custom-settings';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
@@ -23,12 +25,20 @@
 	let saving = false;
 	let loadError = '';
 	let saved = false;
+	let baseline: CustomSettings;
+	function setValues(value: CustomSettings) {
+		display = getToolChainDisplaySettings(value);
+		filesystemSortDefault = getFilesystemSortDefault(value);
+		baseline = {
+			tool_chain_display: { ...display },
+			filesystem_sort_default: filesystemSortDefault
+		};
+	}
 
 	onMount(async () => {
 		try {
 			const settings = await getCustomSettings(localStorage.token);
-			display = getToolChainDisplaySettings(settings);
-			filesystemSortDefault = getFilesystemSortDefault(settings);
+			setValues(settings);
 		} catch (error) {
 			loadError = String(error);
 		} finally {
@@ -40,12 +50,17 @@
 		saving = true;
 		saved = false;
 		try {
-			const result = await setCustomSettings(localStorage.token, {
-				tool_chain_display: display,
-				filesystem_sort_default: filesystemSortDefault
-			});
-			display = getToolChainDisplaySettings(result);
-			filesystemSortDefault = getFilesystemSortDefault(result);
+			const result = await setCustomSettings(
+				localStorage.token,
+				getCustomSettingsUpdates(
+					{
+						tool_chain_display: display,
+						filesystem_sort_default: filesystemSortDefault
+					},
+					baseline
+				)
+			);
+			setValues(result);
 			config.update((current) => (current ? { ...current, custom_settings: result } : current));
 			saved = true;
 			toast.success($i18n.t('Settings saved successfully!'));
@@ -92,7 +107,12 @@
 		{:else if loadError}
 			<p role="alert">{loadError}</p>
 		{:else}
-			<fieldset disabled={saving} class="flex flex-col gap-5">
+			<fieldset
+				disabled={saving}
+				class="flex flex-col gap-5"
+				on:input={() => (saved = false)}
+				on:change={() => (saved = false)}
+			>
 				{#if category === 'filesystem'}
 					<Filesystem bind:value={filesystemSortDefault} />
 				{:else}
@@ -106,6 +126,7 @@
 								ariaLabelledbyId="tool-chain-enabled-label"
 								bind:state={display.enabled}
 								disabled={saving}
+								on:change={() => (saved = false)}
 							/>
 						</div>
 						<p class="mt-1 text-xs text-gray-500">
@@ -143,6 +164,7 @@
 							ariaLabelledbyId="tool-chain-auto-load-label"
 							bind:state={display.auto_load}
 							disabled={saving}
+							on:change={() => (saved = false)}
 						/>
 					</div>
 					<p class="text-xs text-gray-500">

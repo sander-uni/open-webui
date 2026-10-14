@@ -440,3 +440,66 @@ describe('tool-chain window fixes', () => {
 		expect(window.hiddenRun?.toolCallCount ?? 0).toBeLessThan(2);
 	});
 });
+
+it('keeps provider message ids distinct from generated detail group ids', () => {
+	const output: OutputItem[] = [
+		{ type: 'message', id: 'detail-1', content: [{ text: 'Visible text' }] },
+		...chain(1)
+	];
+	const window = selectOutputWindow(output, Infinity, { live: false });
+	const display = buildWindowDisplayItems(window.output, window);
+	expect(new Set(display.map((item) => item.id)).size).toBe(display.length);
+});
+
+it('does not serialize hidden call arguments when no embeds need them', () => {
+	const output = chain(100);
+	Object.defineProperty(output[1], 'arguments', {
+		get() {
+			throw new Error('hidden arguments serialized');
+		}
+	});
+	expect(() => selectOutputWindow(output, 50, { live: false })).not.toThrow();
+});
+
+it('processes a large parallel block with linear metadata reads', () => {
+	const n = 500;
+	let reads = 0;
+	const calls: OutputItem[] = Array.from({ length: n }, (_, i) => ({
+		get type() {
+			reads++;
+			return 'function_call';
+		},
+		id: `c${i}`,
+		call_id: `c${i}`,
+		name: 'run',
+		status: 'completed',
+		arguments: '{}'
+	}));
+	const results: OutputItem[] = Array.from({ length: n }, (_, i) => ({
+		type: 'function_call_output',
+		call_id: `c${i}`,
+		output: []
+	}));
+	const window = selectOutputWindow([...calls, ...results], Infinity, { live: false });
+	expect(window.output.length).toBe(n * 2);
+	expect(reads).toBeLessThan(n * 100);
+});
+
+it('counts tool names that coincide with Object prototype properties', () => {
+	const output = chain(100).map((item) =>
+		item.type === 'function_call' ? { ...item, name: 'toString' } : item
+	);
+	const window = selectOutputWindow(output, 50, { live: false });
+	expect(window.hiddenTotals.toolCounts.toString).toBe(75);
+	expect(window.hiddenRun?.toolCounts.toString).toBe(75);
+});
+
+it('skips hidden embed parsing when embeds are disabled', () => {
+	const output = chain(100);
+	Object.defineProperty(output[2], 'embeds', {
+		get() {
+			throw new Error('hidden embed read');
+		}
+	});
+	expect(() => selectOutputWindow(output, 50, { live: false, includeEmbeds: false })).not.toThrow();
+});

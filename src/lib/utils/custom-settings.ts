@@ -9,6 +9,26 @@ export type CustomSettings = {
 	filesystem_sort_default?: FilesystemSortDefault;
 };
 
+/** Send only edited categories, so stale forms cannot overwrite unrelated admin changes. */
+export function getCustomSettingsUpdates(
+	current: CustomSettings,
+	saved: CustomSettings
+): Partial<CustomSettings> {
+	const updates: Partial<CustomSettings> = {};
+	const a = current.tool_chain_display,
+		b = saved.tool_chain_display;
+	if (a.enabled !== b.enabled || a.page_size !== b.page_size || a.auto_load !== b.auto_load) {
+		if (!Number.isInteger(a.page_size) || a.page_size < 10 || a.page_size > 500) {
+			throw new Error('Steps per page must be an integer between 10 and 500.');
+		}
+		updates.tool_chain_display = { ...a };
+	}
+	if (current.filesystem_sort_default !== saved.filesystem_sort_default) {
+		updates.filesystem_sort_default = current.filesystem_sort_default;
+	}
+	return updates;
+}
+
 export const FILESYSTEM_SORT_OPTIONS = [
 	{ value: 'date_desc', label: 'Date modified — newest first' },
 	{ value: 'date_asc', label: 'Date modified — oldest first' },

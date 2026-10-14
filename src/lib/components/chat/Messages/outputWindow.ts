@@ -69,6 +69,7 @@ export type OutputWindow = {
 export type OutputWindowOptions = {
 	/** The reply is still streaming. Only then can a call without a result still be running. */
 	live?: boolean;
+	includeEmbeds?: boolean;
 };
 
 function hasText(item: OutputItem): boolean {
@@ -130,7 +131,7 @@ function emptySummary(): HiddenRunSummary {
 	return {
 		steps: 0,
 		toolCallCount: 0,
-		toolCounts: {},
+		toolCounts: Object.create(null),
 		codeInterpreterCount: 0,
 		embeds: [],
 		rejected: false,
@@ -146,7 +147,7 @@ function emptySummary(): HiddenRunSummary {
 export function selectOutputWindow(
 	output: OutputItem[] = [],
 	limit = OUTPUT_PAGE_SIZE,
-	{ live = true }: OutputWindowOptions = {}
+	{ live = true, includeEmbeds = true }: OutputWindowOptions = {}
 ): OutputWindow {
 	const steps: number[] = [];
 	const results = new Map<string, number>();
@@ -187,13 +188,15 @@ export function selectOutputWindow(
 
 	// One model turn's parallel calls are consecutive call items (their results follow
 	// later), so select the whole block together with the reasoning that produced it.
+	const coveredCalls = new Set<number>();
 	for (const index of [...selected]) {
-		if (output[index]?.type !== 'function_call') continue;
+		if (coveredCalls.has(index) || output[index]?.type !== 'function_call') continue;
 		let start = index;
 		while (output[start - 1]?.type === 'function_call') start--;
 		let end = index;
 		while (output[end + 1]?.type === 'function_call') end++;
 		for (let call = start; call <= end; call++) {
+			coveredCalls.add(call);
 			selected.add(call);
 			const result = results.get(output[call].call_id ?? output[call].id ?? '');
 			if (result !== undefined) selected.add(result);
@@ -209,7 +212,7 @@ export function selectOutputWindow(
 	// Totals for everything hidden. Only names and statuses are read, never bodies.
 	const hiddenTotals: HiddenTotals = {
 		toolCallCount: 0,
-		toolCounts: {},
+		toolCounts: Object.create(null),
 		reasoningCount: 0,
 		messageCount: 0,
 		codeInterpreterCount: 0,
@@ -235,7 +238,7 @@ export function selectOutputWindow(
 	let runStart = indexes[0] ?? 0;
 	if (indexes.length && DETAIL_TYPES.has(output[indexes[0]]?.type ?? '')) {
 		const summary = emptySummary();
-		const earliest: Record<string, number> = {};
+		const earliest: Record<string, number> = Object.create(null);
 		const embeds: Array<[number, HiddenEmbed]> = [];
 		const addTool = (name: string, at: number) => {
 			summary.toolCallCount++;
@@ -255,12 +258,14 @@ export function selectOutputWindow(
 				summary.rejected ||= item.status === 'rejected';
 				summary.failed ||= item.status === 'failed';
 				const result = output[results.get(item.call_id ?? item.id ?? '') ?? -1];
-				const args =
-					typeof item.arguments === 'string'
-						? item.arguments
-						: JSON.stringify(item.arguments ?? '');
-				for (const embed of parseEmbeds(result?.embeds))
-					embeds.push([index, { name, embed, args }]);
+				const parsedEmbeds = includeEmbeds ? parseEmbeds(result?.embeds) : [];
+				if (parsedEmbeds.length) {
+					const args =
+						typeof item.arguments === 'string'
+							? item.arguments
+							: JSON.stringify(item.arguments ?? '');
+					for (const embed of parsedEmbeds) embeds.push([index, { name, embed, args }]);
+				}
 			} else if (OPENAI_TOOL_NAMES[item.type ?? '']) {
 				addTool(toolName(item), index);
 			}
@@ -334,7 +339,11 @@ export function buildWindowDisplayItems(
 			if (key) detailKeys.set(token, key);
 			if (first === undefined && source) first = sourceIndexes.get(source);
 		}
-		if (!tokens.length) return;
+		if (!tokens.length) {
+			// Provider ids are arbitrary: they must not collide with generated detail ids.
+			item.id = `${item.type}:${item.id}`;
+			return;
+		}
 		const start = position === 0 && window ? window.runStart : first;
 		if (start !== undefined) item.id = `detail-${start}`;
 		// A group that continues into hidden steps renders as a group, as in the full view.

@@ -1366,9 +1366,9 @@ async def get_event_emitter(request_info, update_db=True):
                 if isinstance(data.get('output'), list):
                     output = copy.deepcopy(data['output'])
                 elif 'output_tail' in data:  # CUSTOM: tail-only update (utils/output_tail.py)
-                    output = (
-                        apply_output_tail(output, {**data, 'output_tail': copy.deepcopy(data['output_tail'])}) or output
-                    )
+                    merged = apply_output_tail(output, {**data, 'output_tail': copy.deepcopy(data['output_tail'])})
+                    if merged is not None:
+                        output = merged
                 elif event_type == 'response:completion':
                     from open_webui.utils.middleware import handle_responses_streaming_event
 

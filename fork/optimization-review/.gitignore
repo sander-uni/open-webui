@@ -1,0 +1,4 @@
+demos/runs/
+demos/state.json
+demos/answers.json
+__pycache__/

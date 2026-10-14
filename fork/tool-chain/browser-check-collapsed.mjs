@@ -29,7 +29,9 @@ try {
 					'--no-zygote',
 					'--single-process',
 					'--disable-dev-shm-usage',
-					'--disable-gpu'
+					'--disable-gpu',
+					'--disable-software-rasterizer',
+					'--disable-vulkan'
 				]
 			: []
 	});

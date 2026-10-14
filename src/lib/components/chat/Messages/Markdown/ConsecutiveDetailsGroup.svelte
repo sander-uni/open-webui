@@ -163,7 +163,10 @@
 
 		if (toolCallCount > 0) {
 			// Group by tool name and show counts
-			const nameCounts: Record<string, number> = { ...(hiddenSummary?.toolCounts ?? {}) }; // CUSTOM
+			const nameCounts: Record<string, number> = Object.assign(
+				Object.create(null),
+				hiddenSummary?.toolCounts
+			); // CUSTOM
 			tokens
 				.filter((t) => t?.attributes?.type === 'tool_calls')
 				.forEach((t) => {
