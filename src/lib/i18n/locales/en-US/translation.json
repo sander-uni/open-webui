@@ -3877,5 +3877,7 @@
 	"YouTube": "",
 	"YouTube video player": "",
 	"Zoom in": "",
-	"Zoom out": ""
+	"Zoom out": "",
+	"settings.admin.custom.filesystem.label": "Filesystem",
+	"settings.admin.custom.filesystemSortDefault.label": "Filesystem sort default"
 }

@@ -22,7 +22,7 @@ from sqlalchemy.orm import declarative_base
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def create_fixture(database: Path) -> FastAPI:
+def create_fixture(database: Path, *, static_directory: Path | None = None) -> FastAPI:
     # Replace environment setup/auth only. Storage and router are production code.
     for package in ('open_webui', 'open_webui.models', 'open_webui.routers', 'open_webui.internal', 'open_webui.utils'):
         module = ModuleType(package)
@@ -93,7 +93,7 @@ def create_fixture(database: Path) -> FastAPI:
                 await asyncio.sleep(0.1)
         return {'ok': True}
 
-    app.mount('/', StaticFiles(directory=ROOT / 'fork/tool-chain/dist', html=True))
+    app.mount('/', StaticFiles(directory=static_directory or ROOT / 'fork/tool-chain/dist', html=True))
     return app
 
 

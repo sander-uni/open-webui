@@ -7,13 +7,18 @@
 	import { getCustomSettings, setCustomSettings } from '$lib/apis/custom-settings';
 	import {
 		DEFAULT_TOOL_CHAIN_DISPLAY,
-		getToolChainDisplaySettings
+		getToolChainDisplaySettings,
+		DEFAULT_FILESYSTEM_SORT,
+		getFilesystemSortDefault
 	} from '$lib/utils/custom-settings';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
+	import Filesystem from './CustomSettings/Filesystem.svelte';
 
 	const i18n = getContext<Writable<I18n>>('i18n');
 	let display = { ...DEFAULT_TOOL_CHAIN_DISPLAY };
+	let filesystemSortDefault = DEFAULT_FILESYSTEM_SORT;
+	let category: 'tool-chain' | 'filesystem' = 'tool-chain';
 	let loading = true;
 	let saving = false;
 	let loadError = '';
@@ -21,7 +26,9 @@
 
 	onMount(async () => {
 		try {
-			display = getToolChainDisplaySettings(await getCustomSettings(localStorage.token));
+			const settings = await getCustomSettings(localStorage.token);
+			display = getToolChainDisplaySettings(settings);
+			filesystemSortDefault = getFilesystemSortDefault(settings);
 		} catch (error) {
 			loadError = String(error);
 		} finally {
@@ -33,8 +40,12 @@
 		saving = true;
 		saved = false;
 		try {
-			const result = await setCustomSettings(localStorage.token, { tool_chain_display: display });
+			const result = await setCustomSettings(localStorage.token, {
+				tool_chain_display: display,
+				filesystem_sort_default: filesystemSortDefault
+			});
 			display = getToolChainDisplaySettings(result);
+			filesystemSortDefault = getFilesystemSortDefault(result);
 			config.update((current) => (current ? { ...current, custom_settings: result } : current));
 			saved = true;
 			toast.success($i18n.t('Settings saved successfully!'));
@@ -56,10 +67,23 @@
 	>
 		<button
 			type="button"
-			aria-current="page"
-			class="border-b-2 border-gray-900 px-2 py-2 dark:border-white"
+			aria-current={category === 'tool-chain' ? 'page' : undefined}
+			on:click={() => (category = 'tool-chain')}
+			class="px-2 py-2 {category === 'tool-chain'
+				? 'border-b-2 border-gray-900 dark:border-white'
+				: ''}"
 		>
 			{$i18n.t('settings.admin.custom.toolChainDisplay.label')}
+		</button>
+		<button
+			type="button"
+			aria-current={category === 'filesystem' ? 'page' : undefined}
+			on:click={() => (category = 'filesystem')}
+			class="px-2 py-2 {category === 'filesystem'
+				? 'border-b-2 border-gray-900 dark:border-white'
+				: ''}"
+		>
+			{$i18n.t('settings.admin.custom.filesystem.label')}
 		</button>
 	</nav>
 	<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hover">
@@ -69,59 +93,64 @@
 			<p role="alert">{loadError}</p>
 		{:else}
 			<fieldset disabled={saving} class="flex flex-col gap-5">
-				<div>
+				{#if category === 'filesystem'}
+					<Filesystem bind:value={filesystemSortDefault} />
+				{:else}
+					<div>
+						<div class="flex items-center justify-between gap-4">
+							<label id="tool-chain-enabled-label" for="tool-chain-enabled"
+								>{$i18n.t('settings.admin.custom.enabled.label')}</label
+							>
+							<Switch
+								id="tool-chain-enabled"
+								ariaLabelledbyId="tool-chain-enabled-label"
+								bind:state={display.enabled}
+								disabled={saving}
+							/>
+						</div>
+						<p class="mt-1 text-xs text-gray-500">
+							{$i18n.t(
+								'Start with recent steps and load earlier steps as needed. Turning this off displays the entire chain.'
+							)}
+						</p>
+					</div>
+					<div>
+						<label for="tool-chain-page-size"
+							>{$i18n.t('settings.admin.custom.pageSize.label')}</label
+						>
+						<input
+							id="tool-chain-page-size"
+							type="number"
+							min="10"
+							max="500"
+							step="1"
+							required
+							bind:value={display.page_size}
+							class="mt-1 block w-24 rounded-lg border border-gray-200 bg-transparent px-2 py-1 dark:border-gray-700"
+						/>
+						<p class="mt-1 text-xs text-gray-500">
+							{$i18n.t(
+								'10–500 steps. Smaller pages reduce browser work. Calls keep their results and related reasoning together.'
+							)}
+						</p>
+					</div>
 					<div class="flex items-center justify-between gap-4">
-						<label id="tool-chain-enabled-label" for="tool-chain-enabled"
-							>{$i18n.t('settings.admin.custom.enabled.label')}</label
+						<label id="tool-chain-auto-load-label" for="tool-chain-auto-load"
+							>{$i18n.t('settings.admin.custom.autoLoad.label')}</label
 						>
 						<Switch
-							id="tool-chain-enabled"
-							ariaLabelledbyId="tool-chain-enabled-label"
-							bind:state={display.enabled}
+							id="tool-chain-auto-load"
+							ariaLabelledbyId="tool-chain-auto-load-label"
+							bind:state={display.auto_load}
 							disabled={saving}
 						/>
 					</div>
-					<p class="mt-1 text-xs text-gray-500">
+					<p class="text-xs text-gray-500">
 						{$i18n.t(
-							'Start with recent steps and load earlier steps as needed. Turning this off displays the entire chain.'
+							'Applies to all users and existing chats when opened or refreshed. Changes apply immediately in this browser.'
 						)}
 					</p>
-				</div>
-				<div>
-					<label for="tool-chain-page-size">{$i18n.t('settings.admin.custom.pageSize.label')}</label
-					>
-					<input
-						id="tool-chain-page-size"
-						type="number"
-						min="10"
-						max="500"
-						step="1"
-						required
-						bind:value={display.page_size}
-						class="mt-1 block w-24 rounded-lg border border-gray-200 bg-transparent px-2 py-1 dark:border-gray-700"
-					/>
-					<p class="mt-1 text-xs text-gray-500">
-						{$i18n.t(
-							'10–500 steps. Smaller pages reduce browser work. Calls keep their results and related reasoning together.'
-						)}
-					</p>
-				</div>
-				<div class="flex items-center justify-between gap-4">
-					<label id="tool-chain-auto-load-label" for="tool-chain-auto-load"
-						>{$i18n.t('settings.admin.custom.autoLoad.label')}</label
-					>
-					<Switch
-						id="tool-chain-auto-load"
-						ariaLabelledbyId="tool-chain-auto-load-label"
-						bind:state={display.auto_load}
-						disabled={saving}
-					/>
-				</div>
-				<p class="text-xs text-gray-500">
-					{$i18n.t(
-						'Applies to all users and existing chats when opened or refreshed. Changes apply immediately in this browser.'
-					)}
-				</p>
+				{/if}
 			</fieldset>
 		{/if}
 	</div>
