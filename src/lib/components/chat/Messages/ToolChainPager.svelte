@@ -66,6 +66,13 @@
 	let previousHeight = 0;
 	// Steps added only because new tool rounds arrived while scrolled away from the bottom.
 	let autoGrown = 0;
+	// Auto-loading waits until scrolling has come to rest (iOS momentum included), loads one
+	// page, and is then disarmed until the paging line leaves the top of the screen. A fling
+	// through the boundary therefore never loads a chain of pages.
+	const REST_MS = 250;
+	let restTimer: ReturnType<typeof setTimeout> | undefined;
+	let movedUp = false;
+	let armed = true;
 
 	// While you read above the bottom, new rounds are added without removing the steps you
 	// are looking at, for at most one extra page; after that the window slides as usual.
@@ -104,6 +111,7 @@
 		loading = true;
 		following = false;
 		autoGrown = 0;
+		armed = false;
 		const root = scrollRoot;
 		const height = root?.scrollHeight ?? 0;
 		const top = root?.scrollTop ?? 0;
@@ -133,6 +141,20 @@
 		previousHeight = scrollRoot.scrollHeight;
 		following = nearBottom(scrollRoot);
 		const target = scrollRoot === document.scrollingElement ? window : scrollRoot;
+		const nearTop = () => {
+			if (!scrollRoot || !marker) return false;
+			const rootTop =
+				scrollRoot === document.scrollingElement ? 0 : scrollRoot.getBoundingClientRect().top;
+			const bounds = marker.getBoundingClientRect();
+			return bounds.top <= rootTop + 140 && bounds.bottom >= rootTop - 140;
+		};
+		const onRest = () => {
+			restTimer = undefined;
+			const wasUp = movedUp;
+			movedUp = false;
+			if (loading || !autoLoad || !armed || !wasUp || hiddenSteps === 0) return;
+			if (nearTop()) void loadEarlier();
+		};
 		const onScroll = () => {
 			if (!scrollRoot || loading) return;
 			const top = scrollRoot.scrollTop;
@@ -140,17 +162,19 @@
 			// scrolling; that must not count as scrolling up to load more.
 			const shrank = scrollRoot.scrollHeight < previousHeight;
 			previousHeight = scrollRoot.scrollHeight;
-			const upward = top < previousScroll && !shrank;
+			if (top < previousScroll && !shrank) movedUp = true;
+			else if (top > previousScroll) movedUp = false;
 			previousScroll = top;
 			setFollowing(nearBottom(scrollRoot));
-			if (!autoLoad || !upward || hiddenSteps === 0) return;
-			const rootTop =
-				scrollRoot === document.scrollingElement ? 0 : scrollRoot.getBoundingClientRect().top;
-			const bounds = marker.getBoundingClientRect();
-			if (bounds.top <= rootTop + 140 && bounds.bottom >= rootTop - 140) void loadEarlier();
+			if (!nearTop()) armed = true;
+			clearTimeout(restTimer);
+			restTimer = setTimeout(onRest, REST_MS);
 		};
 		target.addEventListener('scroll', onScroll, { passive: true });
-		return () => target.removeEventListener('scroll', onScroll);
+		return () => {
+			clearTimeout(restTimer);
+			target.removeEventListener('scroll', onScroll);
+		};
 	});
 </script>
 

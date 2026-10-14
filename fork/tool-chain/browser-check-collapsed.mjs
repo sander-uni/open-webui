@@ -113,9 +113,91 @@ try {
 	assert(await summary.isVisible());
 	console.log(`NOTES SUMMARY: ${text}`);
 
+	// Scrolling back up after loading a page must not chain through every page: auto-load
+	// waits for scrolling to rest and loads one page per stop. (Before: 100 -> 1,000.)
+	const visibleNow = () =>
+		page
+			.locator('.tool-chain-window')
+			.evaluate((el) => Number(el.dataset.totalSteps) - Number(el.dataset.hiddenSteps));
+	await page.getByRole('button', { name: 'Load earlier steps' }).click();
+	await page.waitForTimeout(300);
+	const afterManual = await visibleNow();
+	await page.mouse.move(500, 400);
+	for (let i = 0; i < 10; i++) {
+		await page.mouse.wheel(0, 600);
+		await page.waitForTimeout(30);
+	}
+	await page.waitForTimeout(300);
+	for (let i = 0; i < 60; i++) {
+		await page.mouse.wheel(0, -400);
+		await page.waitForTimeout(30);
+	}
+	await page.waitForTimeout(800);
+	const afterFling = await visibleNow();
+	assert(
+		afterFling - afterManual <= 6 * 50,
+		`Scrolling up chained loads: ${afterManual} -> ${afterFling}`
+	);
+
+	// The paging line's numbers match what is rendered: hidden calls plus the calls counted
+	// by the visible dropdown headers equal every call in the reply.
+	const consistency = await page.evaluate(() => {
+		const line = document.querySelector('.tool-chain-page-boundary')?.innerText ?? '';
+		const hidden = Number(
+			(line.match(/Hidden above: ([\d,]+) tool call/) ?? [0, '0'])[1].replace(/,/g, '')
+		);
+		let shown = 0;
+		document.querySelectorAll('[aria-label="Toggle details"]').forEach((el) => {
+			const text = el.innerText.replace(/^(Explored|Exploring)\s*/, '');
+			for (const part of text.split(',')) {
+				const count = part.trim().match(/^([\d,]+)\s/);
+				shown += count ? Number(count[1].replace(/,/g, '')) : part.trim() ? 1 : 0;
+			}
+		});
+		return { hidden, shown };
+	});
+	assert.equal(consistency.hidden + consistency.shown, 2000, JSON.stringify(consistency));
+
+	// iPad Safari: no scroll anchoring, and position corrections are lost during momentum.
+	// Even then, one stop loads at most one page.
+	await page.goto(`http://127.0.0.1:${port}/?collapsed&notes`);
+	await page.locator('.tool-chain-window').waitFor();
+	await page.locator('#messages-container').evaluate((el) => {
+		el.style.overflowAnchor = 'none';
+		const native = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+		Object.defineProperty(el, 'scrollTop', {
+			get() {
+				return native.get.call(this);
+			},
+			set() {},
+			configurable: true
+		});
+	});
+	await page.getByRole('button', { name: 'Load earlier steps' }).click();
+	await page.waitForTimeout(300);
+	const safariStart = await visibleNow();
+	for (let i = 0; i < 10; i++) {
+		await page.mouse.wheel(0, 600);
+		await page.waitForTimeout(30);
+	}
+	await page.waitForTimeout(300);
+	for (let i = 0; i < 60; i++) {
+		await page.mouse.wheel(0, -400);
+		await page.waitForTimeout(30);
+	}
+	await page.waitForTimeout(800);
+	const safariEnd = await visibleNow();
+	assert(
+		safariEnd - safariStart <= 2 * 50,
+		`Safari-like scrolling chained loads: ${safariStart} -> ${safariEnd}`
+	);
+	console.log(
+		`SCROLL-UP: ${afterManual} -> ${afterFling} steps (Chromium), ${safariStart} -> ${safariEnd} (Safari-like); counts consistent`
+	);
+
 	assert.deepEqual(errors, [], `Browser runtime errors: ${errors.join('; ')}`);
 	console.log(
-		'COLLAPSED CHECK: PASS — full-chain header counts, no pager or loading while collapsed, capped growth while scrolled away, reset at bottom, true hidden totals with text between calls'
+		'COLLAPSED CHECK: PASS — full-chain header counts, no pager or loading while collapsed, capped growth while scrolled away, reset at bottom, true hidden totals with text between calls, no chained loads when scrolling back up, counts match rendered content'
 	);
 } finally {
 	await browser?.close();

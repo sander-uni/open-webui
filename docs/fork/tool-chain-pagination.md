@@ -1,7 +1,10 @@
 # Tool-chain paging
 
 Long structured assistant replies show the latest 50 output steps by default, with earlier
-steps loaded automatically when scrolling upward near the page boundary. A
+steps loaded automatically when you scroll up to the page boundary and stop there:
+one page per stop. Auto-load waits until scrolling has come to rest (including iOS
+momentum), then is disarmed until the paging line has left the top of the screen, so
+flicking up through a reply never loads a chain of pages. A
 **Load earlier steps** button provides the same action for keyboard users.
 **Show recent steps** returns to the small recent window.
 
