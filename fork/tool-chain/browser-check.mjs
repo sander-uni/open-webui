@@ -54,7 +54,7 @@ try {
 	await page.getByText('command check-step-1976', { exact: true }).waitFor({ state: 'detached' });
 	assert.equal(await page.getByText('command check-step-1976', { exact: true }).count(), 0);
 
-	await page.getByRole('button', { name: 'Load earlier steps' }).click();
+	await page.getByRole('button', { name: /^Load [\d,]+ earlier steps$/ }).click();
 	assert((await hidden()) < initial);
 	assert((await retained()).includes('Retained output items: 6001'));
 	assert.equal(
@@ -125,7 +125,7 @@ try {
 	await page.mouse.wheel(0, -350);
 	await page.waitForTimeout(350);
 	assert.equal(await hidden(), beforeDisabledScroll, 'Auto-load still ran while disabled');
-	await page.getByRole('button', { name: 'Load earlier steps' }).click();
+	await page.getByRole('button', { name: /^Load [\d,]+ earlier steps$/ }).click();
 	assert.equal(
 		await hidden(),
 		beforeDisabledScroll - 20,

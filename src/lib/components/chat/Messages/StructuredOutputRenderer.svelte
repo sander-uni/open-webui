@@ -75,12 +75,14 @@
 	} text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition`;
 
 	let visibleSteps = OUTPUT_PAGE_SIZE;
+	let autoGrown = 0;
 	let windowId = '';
 	$: displaySettings = getToolChainDisplaySettings($config?.custom_settings);
 	$: nextWindowId = `${chatId}:${messageId}:${id}:${displaySettings.enabled}:${displaySettings.page_size}`;
 	$: if (windowId !== nextWindowId) {
 		windowId = nextWindowId;
 		visibleSteps = displaySettings.page_size;
+		autoGrown = 0;
 	}
 	$: outputWindow = selectOutputWindow(output, displaySettings.enabled ? visibleSteps : Infinity, {
 		live: !done
@@ -109,6 +111,7 @@
 			pageSize={displaySettings.page_size}
 			autoLoad={displaySettings.auto_load}
 			bind:visibleSteps
+			bind:autoGrown
 		/>
 	{/if}
 {/key}
@@ -164,6 +167,7 @@
 							pageSize={displaySettings.page_size}
 							autoLoad={displaySettings.auto_load}
 							bind:visibleSteps
+							bind:autoGrown
 						/>
 					{/key}
 				{/if}

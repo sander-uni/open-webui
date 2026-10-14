@@ -11,6 +11,9 @@
 	export let pageSize = OUTPUT_PAGE_SIZE;
 	export let autoLoad = true;
 	export let hiddenTotals: HiddenTotals | null = null;
+	// Steps added only because new rounds arrived while you were scrolled away from the
+	// bottom. Bound by the parent so it survives this component being re-created.
+	export let autoGrown = 0;
 
 	// Show the most used tools by name; fold the rest into "other".
 	const MAX_TOOL_NAMES = 4;
@@ -64,8 +67,6 @@
 	let previousTotal = totalSteps;
 	let previousScroll = 0;
 	let previousHeight = 0;
-	// Steps added only because new tool rounds arrived while scrolled away from the bottom.
-	let autoGrown = 0;
 	// Auto-loading waits until scrolling has come to rest (iOS momentum included), loads one
 	// page, and is then disarmed until the paging line leaves the top of the screen. A fling
 	// through the boundary therefore never loads a chain of pages.
@@ -74,16 +75,16 @@
 	let movedUp = false;
 	let armed = true;
 
-	// While you read above the bottom, new rounds are added without removing the steps you
-	// are looking at, for at most one extra page; after that the window slides as usual.
-	// Returning to the bottom (or "Show recent steps") drops that extra growth again.
+	// While you are scrolled away from the bottom, the window never drops steps from its
+	// top: new rounds are only added at the end, so what you are reading (and pages you
+	// loaded) stays put while the model generates. Returning to the bottom (or "Show
+	// recent steps") drops that extra growth again.
 	$: if (totalSteps !== previousTotal) {
 		const added = Math.max(0, totalSteps - previousTotal);
 		previousTotal = totalSteps;
 		if (!following && added > 0) {
-			const grow = Math.min(added, Math.max(0, pageSize - autoGrown));
-			visibleSteps += grow;
-			autoGrown += grow;
+			visibleSteps += added;
+			autoGrown += added;
 		}
 	}
 
@@ -106,7 +107,8 @@
 		return document.scrollingElement as HTMLElement;
 	}
 
-	async function loadEarlier() {
+	// Adds steps below the paging line and keeps what is on screen in place.
+	async function reveal(amount: number) {
 		if (loading || hiddenSteps === 0) return;
 		loading = true;
 		following = false;
@@ -115,7 +117,7 @@
 		const root = scrollRoot;
 		const height = root?.scrollHeight ?? 0;
 		const top = root?.scrollTop ?? 0;
-		visibleSteps += pageSize;
+		visibleSteps = amount === Infinity ? Infinity : visibleSteps + amount;
 		await tick();
 		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 		if (root) {
@@ -126,6 +128,9 @@
 		}
 		loading = false;
 	}
+
+	const loadEarlier = () => reveal(pageSize);
+	const showAll = () => reveal(Infinity);
 
 	async function showRecent() {
 		visibleSteps = pageSize;
@@ -196,7 +201,19 @@
 							disabled={loading}
 							on:click={loadEarlier}
 						>
-							{$i18n.t('Load earlier steps')}
+							{$i18n.t('Load {{COUNT}} earlier steps', {
+								COUNT: number(Math.min(pageSize, hiddenSteps))
+							})}
+						</button>
+					{/if}
+					{#if hiddenSteps > pageSize}
+						<button
+							type="button"
+							class="hover:text-gray-700 dark:hover:text-gray-300 underline"
+							disabled={loading}
+							on:click={showAll}
+						>
+							{$i18n.t('Show all {{COUNT}} steps', { COUNT: number(totalSteps) })}
 						</button>
 					{/if}
 					{#if visibleSteps > pageSize}

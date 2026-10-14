@@ -4,8 +4,8 @@ Long structured assistant replies show the latest 50 output steps by default, wi
 steps loaded automatically when you scroll up to the page boundary and stop there:
 one page per stop. Auto-load waits until scrolling has come to rest (including iOS
 momentum), then is disarmed until the paging line has left the top of the screen, so
-flicking up through a reply never loads a chain of pages. A
-**Load earlier steps** button provides the same action for keyboard users.
+flicking up through a reply never loads a chain of pages. Two buttons reveal more: **Load 50 earlier steps** (one page, the configured page
+size) and **Show all N steps** (everything; a long run can take a moment to render).
 **Show recent steps** returns to the small recent window.
 
 A step is a reasoning, tool-call or message output item. Tool results travel with
@@ -45,11 +45,13 @@ or sliding the window keeps every group's expanded/collapsed state.
 ### While a reply streams
 
 When you are at the bottom, the window slides: each new round replaces the oldest
-visible one. When you have scrolled up, new rounds are added without removing what
-you are reading, for at most one extra page; after that the window slides again.
-Returning to the bottom (or **Show recent steps**) drops that extra growth.
-Content shrinking under the viewport is not treated as scrolling up, so it never
-loads pages on its own.
+visible one. When you have scrolled up, the window never drops anything from its top:
+new rounds are only added at the end, so what you are reading, and pages you loaded,
+stay exactly where they are while the model generates (this does not rely on the
+browser's scroll anchoring, which Safari lacks). Returning to the bottom (or **Show
+recent steps**) drops the rounds added meanwhile from the window again. With **Show
+all**, everything stays visible as new rounds arrive. Content shrinking under the
+viewport is not treated as scrolling up, so it never loads pages on its own.
 
 Paging is a view of `message.output`. The full array is retained for saved chats,
 model requests, exports, copy/edit operations and snapshot reloads. This is not

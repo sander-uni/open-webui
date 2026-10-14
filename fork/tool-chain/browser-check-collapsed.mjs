@@ -1,4 +1,4 @@
-// Collapsed tool chains (Open WebUI's default) and bounded growth while scrolled away.
+// Collapsed tool chains (Open WebUI's default), generation while scrolled away, paging controls.
 // Run like browser-check.mjs: node fork/tool-chain/browser-check-collapsed.mjs
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -59,20 +59,18 @@ try {
 	assert(base <= 51, `Collapsed scrolling loaded pages (${base} visible)`);
 	assert.match(await toggle.innerText(), /2000 run_command/);
 
-	// While reading above the bottom, new rounds are kept for at most one extra page.
+	// While reading above the bottom, new rounds are added and nothing is dropped.
 	await root.evaluate((element) => (element.scrollTop = element.scrollHeight));
 	await page.waitForTimeout(100);
 	await root.evaluate(
 		(element) => (element.scrollTop = element.scrollHeight - element.clientHeight - 600)
 	);
 	await page.waitForTimeout(100);
+	const hiddenBeforeRounds = await hidden();
 	for (let i = 0; i < 40; i++)
 		await page.getByRole('button', { name: 'Append tool round' }).click();
-	assert.equal(
-		(await total()) - (await hidden()),
-		base + 50,
-		'Growth while scrolled away was not capped'
-	);
+	assert.equal(await hidden(), hiddenBeforeRounds, 'Steps were dropped while scrolled away');
+	assert.equal((await total()) - (await hidden()), base + 80, 'New rounds were not all added');
 	// The fixture's new rounds follow a text message, so they form their own group.
 	assert.match(
 		await page.getByRole('button', { name: 'Toggle details' }).last().innerText(),
@@ -119,7 +117,7 @@ try {
 		page
 			.locator('.tool-chain-window')
 			.evaluate((el) => Number(el.dataset.totalSteps) - Number(el.dataset.hiddenSteps));
-	await page.getByRole('button', { name: 'Load earlier steps' }).click();
+	await page.getByRole('button', { name: /^Load [\d,]+ earlier steps$/ }).click();
 	await page.waitForTimeout(300);
 	const afterManual = await visibleNow();
 	await page.mouse.move(500, 400);
@@ -173,7 +171,7 @@ try {
 			configurable: true
 		});
 	});
-	await page.getByRole('button', { name: 'Load earlier steps' }).click();
+	await page.getByRole('button', { name: /^Load [\d,]+ earlier steps$/ }).click();
 	await page.waitForTimeout(300);
 	const safariStart = await visibleNow();
 	for (let i = 0; i < 10; i++) {
@@ -195,9 +193,80 @@ try {
 		`SCROLL-UP: ${afterManual} -> ${afterFling} steps (Chromium), ${safariStart} -> ${safariEnd} (Safari-like); counts consistent`
 	);
 
+	// Generating while you read: load a page, rest near the boundary, 60 rounds arrive.
+	// Nothing you loaded is dropped and, even without scroll anchoring (Safari), the row
+	// you are reading stays where it is. (Before: 69 loaded steps dropped, content jumped.)
+	for (const safari of [false, true]) {
+		await page.goto(`http://127.0.0.1:${port}/?notes`);
+		await page.locator('.tool-chain-window').waitFor();
+		if (safari) {
+			await page
+				.locator('#messages-container')
+				.evaluate((el) => (el.style.overflowAnchor = 'none'));
+		}
+		await page.getByRole('button', { name: /^Load [\d,]+ earlier steps$/ }).click();
+		await page.waitForTimeout(400);
+		await page
+			.locator('.tool-chain-window')
+			.evaluate((el) => el.scrollIntoView({ block: 'start' }));
+		await page.mouse.move(500, 400);
+		await page.mouse.wheel(0, 120);
+		await page.waitForTimeout(500);
+		const reading = () =>
+			page.evaluate(() => {
+				const w = document.querySelector('.tool-chain-window');
+				const root = document.getElementById('messages-container');
+				const rootTop = root.getBoundingClientRect().top;
+				const rows = [
+					...document.querySelectorAll('[aria-label="Toggle details"], .whitespace-pre-wrap')
+				];
+				const row = rows.find((r) => r.getBoundingClientRect().top >= rootTop + 60);
+				return {
+					hidden: Number(w.dataset.hiddenSteps),
+					text: row?.innerText.slice(0, 30),
+					y: Math.round(row?.getBoundingClientRect().top ?? -1)
+				};
+			});
+		const before = await reading();
+		for (let i = 0; i < 60; i++) {
+			await page.getByRole('button', { name: 'Append tool round' }).click();
+			await page.waitForTimeout(20);
+		}
+		await page.waitForTimeout(600);
+		const after = await reading();
+		assert.equal(after.hidden, before.hidden, `Generation dropped loaded steps (safari=${safari})`);
+		assert.deepEqual(after, before, `Reading position moved during generation (safari=${safari})`);
+	}
+
+	// Two ways to reveal: one page, or everything.
+	await page.goto(`http://127.0.0.1:${port}/?notes`);
+	await page.locator('.tool-chain-window').waitFor();
+	const showAll = page.getByRole('button', { name: /^Show all [\d,]+ steps$/ });
+	assert.equal(await showAll.innerText(), 'Show all 6,001 steps');
+	assert.equal(
+		await page.getByRole('button', { name: /^Load [\d,]+ earlier steps$/ }).innerText(),
+		'Load 50 earlier steps'
+	);
+	await showAll.click();
+	await page.waitForFunction(
+		() => document.querySelector('.tool-chain-window')?.dataset.hiddenSteps === '0'
+	);
+	assert.equal(await page.locator('[id$="-tool-call"]').count(), 2000);
+	assert.equal(await page.locator('.tool-chain-hidden-summary').count(), 0);
+	assert.equal(await showAll.count(), 0, 'Show all still offered with nothing hidden');
+	// New rounds keep everything visible; "Show recent steps" goes back to one page.
+	await page.getByRole('button', { name: 'Append tool round' }).click();
+	await page.waitForFunction(
+		() => document.querySelector('.tool-chain-window')?.dataset.hiddenSteps === '0'
+	);
+	await page.getByRole('button', { name: 'Show recent steps' }).click();
+	await page.waitForFunction(
+		() => Number(document.querySelector('.tool-chain-window')?.dataset.hiddenSteps) > 5900
+	);
+
 	assert.deepEqual(errors, [], `Browser runtime errors: ${errors.join('; ')}`);
 	console.log(
-		'COLLAPSED CHECK: PASS — full-chain header counts, no pager or loading while collapsed, capped growth while scrolled away, reset at bottom, true hidden totals with text between calls, no chained loads when scrolling back up, counts match rendered content'
+		'COLLAPSED CHECK: PASS — full-chain header counts, no pager or loading while collapsed, nothing dropped while scrolled away, reset at bottom, true hidden totals with text between calls, no chained loads when scrolling back up, counts match rendered content, stable while generating, load 50 / show all'
 	);
 } finally {
 	await browser?.close();
