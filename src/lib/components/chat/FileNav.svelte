@@ -15,6 +15,7 @@
 	import { toast } from 'svelte-sonner';
 	import { getContext, onMount, onDestroy, tick } from 'svelte';
 	import {
+		config,
 		terminalServers,
 		settings,
 		showFileNavPath,
@@ -45,6 +46,7 @@
 	import { isSavedChatId, isTemporaryChatId } from '$lib/utils/chatId';
 	import { copyToClipboard } from '$lib/utils';
 	import { normalizeDocumentTargetPage } from '$lib/utils/documentPreview';
+	import { getFilesystemSortDefault, type FilesystemSortDefault } from '$lib/utils/custom-settings';
 
 	import Spinner from '../common/Spinner.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
@@ -120,8 +122,16 @@
 		requestId: number;
 	};
 
-	let sortBy: SortMode = 'name';
-	let sortAsc = true;
+	let sortBy: SortMode = 'date';
+	let sortAsc = false;
+	let filesystemSortDefault: FilesystemSortDefault;
+	// Apply a changed admin default, while preserving manual sorting on unrelated config updates.
+	$: if (filesystemSortDefault !== getFilesystemSortDefault($config?.custom_settings)) {
+		filesystemSortDefault = getFilesystemSortDefault($config?.custom_settings);
+		const [mode, direction] = filesystemSortDefault.split('_') as [SortMode, 'asc' | 'desc'];
+		sortBy = mode;
+		sortAsc = direction === 'asc';
+	}
 	let showHidden = false;
 	let visibleEntries: BrowserRow[] = [];
 	let expandedDirs: Set<string> = new Set();

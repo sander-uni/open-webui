@@ -8,7 +8,7 @@ from backend_fixture import create_fixture
 ADMIN = {'Authorization': 'Bearer fixture-admin'}
 USER = {'Authorization': 'Bearer fixture-user'}
 URL = '/api/v1/custom-settings'
-DEFAULT = {'tool_chain_display': {'enabled': True, 'page_size': 50, 'auto_load': True}}
+DEFAULT = {'tool_chain_display': {'enabled': True, 'page_size': 50, 'auto_load': True}, 'filesystem_sort_default': 'date_desc'}
 
 
 def test_defaults_validation_and_write_dependency(tmp_path):
@@ -30,7 +30,7 @@ def test_defaults_validation_and_write_dependency(tmp_path):
 def test_real_database_persistence_and_namespace_isolation(tmp_path):
     database = tmp_path / 'config.db'
     app = create_fixture(database)
-    changed = {'tool_chain_display': {'enabled': False, 'page_size': 20, 'auto_load': False}}
+    changed = {'tool_chain_display': {'enabled': False, 'page_size': 20, 'auto_load': False}, 'filesystem_sort_default': 'date_desc'}
     with TestClient(app) as client:
         asyncio.run(app.state.config_model.upsert({'custom.other': {'kept': True}, 'openai.api_key': 'fixture-secret'}))
         assert client.post(URL, json=changed, headers=ADMIN).json() == changed
