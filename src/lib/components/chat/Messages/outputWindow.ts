@@ -43,10 +43,23 @@ export type HiddenRunSummary = {
 	failed: boolean;
 };
 
+/** Everything paged out of view, across all groups and messages. */
+export type HiddenTotals = {
+	toolCallCount: number;
+	/** Tool name -> hidden calls, in order of first use. */
+	toolCounts: Record<string, number>;
+	reasoningCount: number;
+	messageCount: number;
+	codeInterpreterCount: number;
+	failedCount: number;
+};
+
 export type OutputWindow = {
 	output: OutputItem[];
 	totalSteps: number;
 	hiddenSteps: number;
+	/** Counts for all hidden steps, for the paging line. */
+	hiddenTotals: HiddenTotals;
 	/** Present only when hidden steps continue the first visible detail group. */
 	hiddenRun: HiddenRunSummary | null;
 	/** Index where the first visible detail group starts in the full output. */
@@ -193,6 +206,29 @@ export function selectOutputWindow(
 	const indexes = [...selected].sort((a, b) => a - b);
 	const visibleSteps = steps.reduce((total, index) => total + Number(selected.has(index)), 0);
 
+	// Totals for everything hidden. Only names and statuses are read, never bodies.
+	const hiddenTotals: HiddenTotals = {
+		toolCallCount: 0,
+		toolCounts: {},
+		reasoningCount: 0,
+		messageCount: 0,
+		codeInterpreterCount: 0,
+		failedCount: 0
+	};
+	for (const index of steps) {
+		if (selected.has(index)) continue;
+		const item = output[index];
+		if (item.type === 'reasoning') hiddenTotals.reasoningCount++;
+		else if (item.type === 'message') hiddenTotals.messageCount++;
+		else if (item.type === 'open_webui:code_interpreter') hiddenTotals.codeInterpreterCount++;
+		else if (item.type === 'function_call' || OPENAI_TOOL_NAMES[item.type ?? '']) {
+			const name = toolName(item);
+			hiddenTotals.toolCallCount++;
+			hiddenTotals.toolCounts[name] = (hiddenTotals.toolCounts[name] ?? 0) + 1;
+			if (item.status === 'failed' || item.status === 'rejected') hiddenTotals.failedCount++;
+		}
+	}
+
 	// Hidden steps directly before the first visible step that would render in the same
 	// group. Their counts and embeds keep the collapsed group header accurate.
 	let hiddenRun: HiddenRunSummary | null = null;
@@ -258,6 +294,7 @@ export function selectOutputWindow(
 		}),
 		totalSteps: steps.length,
 		hiddenSteps: steps.length - visibleSteps,
+		hiddenTotals,
 		hiddenRun,
 		runStart
 	};

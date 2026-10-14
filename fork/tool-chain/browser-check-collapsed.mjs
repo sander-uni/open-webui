@@ -80,21 +80,42 @@ try {
 	);
 
 	// Back at the bottom the window returns to one page, which now holds only the new
-	// rounds. They form a new group, collapsed by default, so the pager is hidden again
-	// while its header still counts every round, including those paged out.
+	// rounds (behind the fixture's text message). The hidden steps now span more than one
+	// group, so the paging line moves above the reply and states the true totals.
 	await root.evaluate((element) => (element.scrollTop = element.scrollHeight));
-	await pager.waitFor({ state: 'detached' });
+	await page.waitForFunction(() => {
+		const el = document.querySelector('.tool-chain-window');
+		return Number(el?.dataset.totalSteps) - Number(el?.dataset.hiddenSteps) <= 51;
+	});
 	const newGroup = page.getByRole('button', { name: 'Toggle details' }).first();
-	assert.match(await newGroup.innerText(), /40 new_round/);
-	await newGroup.click();
-	await pager.waitFor();
-	assert((await total()) - (await hidden()) <= 51, 'Window did not return to one page');
-	await newGroup.click();
-	await pager.waitFor({ state: 'detached' });
-	assert.match(await newGroup.innerText(), /40 new_round/);
+	assert.match(await newGroup.innerText(), /new_round/);
+	assert.match(
+		await page.locator('.tool-chain-hidden-summary').innerText(),
+		/^Hidden above: 2,0\d\d tool calls \(2,000 run_command(, \d+ new_round)?\) · 1 message · 2,0\d\d thoughts$/
+	);
+
+	// A text line after every round splits the chain into thousands of groups. The
+	// paging line sits above the reply and states the true hidden totals.
+	await page.goto(`http://127.0.0.1:${port}/?collapsed&notes`);
+	const summary = page.locator('.tool-chain-hidden-summary');
+	await summary.waitFor();
+	const text = await summary.innerText();
+	const windowTotals = await page.locator('.tool-chain-window').evaluate((el) => ({
+		total: Number(el.dataset.totalSteps),
+		hidden: Number(el.dataset.hiddenSteps)
+	}));
+	const visibleCalls = await page.getByRole('button', { name: 'Toggle details' }).count();
+	assert.match(text, /Hidden above: 1,9\d\d tool calls \(1,9\d\d run_command\)/, text);
+	assert.match(text, /1,9\d\d messages · 1,9\d\d thoughts/, text);
+	assert(windowTotals.hidden > 5800, `hidden=${windowTotals.hidden}`);
+	assert(visibleCalls < 30, `visible groups=${visibleCalls}`);
+	// Not inside a collapsed group: the line is visible without expanding anything.
+	assert(await summary.isVisible());
+	console.log(`NOTES SUMMARY: ${text}`);
+
 	assert.deepEqual(errors, [], `Browser runtime errors: ${errors.join('; ')}`);
 	console.log(
-		'COLLAPSED CHECK: PASS — full-chain header counts, no pager or loading while collapsed, capped growth while scrolled away, reset at bottom'
+		'COLLAPSED CHECK: PASS — full-chain header counts, no pager or loading while collapsed, capped growth while scrolled away, reset at bottom, true hidden totals with text between calls'
 	);
 } finally {
 	await browser?.close();

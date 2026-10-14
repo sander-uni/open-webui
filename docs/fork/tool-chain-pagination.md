@@ -16,11 +16,20 @@ recent window. Calls without a result are kept visible only while the reply is
 still streaming, since only then can they still be running; after a crash they
 are ordinary history.
 
+### What is hidden
+
+Below **Showing 50 of N steps**, the paging line lists everything paged out of
+view, across all groups and messages: total tool calls (the four most used tools by
+name, the rest as "other"), failed or rejected calls, messages and thoughts. An
+agent that writes a short note between tool calls splits its chain into many
+groups; this line is where the true size of the hidden part shows. Counts come from
+item names and statuses only.
+
 ### Collapsed chains
 
 A tool chain renders as one collapsible group ("Explored …"), collapsed by
-default. When hidden steps continue that group, the paging controls sit at the
-top of the group's content, so they only appear, and only auto-load, while the
+default. When every hidden step belongs to that group, the paging controls sit at
+the top of the group's content, so they only appear, and only auto-load, while the
 group is expanded. The collapsed header still describes the whole group: its tool
 counts, error/rejected icon and embeds include paged-out steps. These come from
 item metadata (names, statuses, `embeds`), not from result or reasoning bodies.

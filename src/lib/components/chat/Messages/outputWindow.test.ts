@@ -235,6 +235,14 @@ describe('tool-chain output window', () => {
 			output: [],
 			totalSteps: 0,
 			hiddenSteps: 0,
+			hiddenTotals: {
+				toolCallCount: 0,
+				toolCounts: {},
+				reasoningCount: 0,
+				messageCount: 0,
+				codeInterpreterCount: 0,
+				failedCount: 0
+			},
 			hiddenRun: null,
 			runStart: 0
 		});
@@ -404,5 +412,31 @@ describe('tool-chain window fixes', () => {
 		// Everything not shown belongs to the one group the window renders.
 		expect(window.hiddenRun?.steps).toBe(window.hiddenSteps);
 		expect(window.hiddenRun?.toolCallCount).toBe(200 - 1 - 25);
+	});
+
+	it('totals every hidden step when text lines split the chain into many groups', () => {
+		// Like a real agent run: a short note after every tool call.
+		const output: OutputItem[] = [];
+		for (let n = 0; n < 400; n++) {
+			output.push(
+				reason(`r${n}`),
+				call(`c${n}`, { name: n % 4 === 0 ? 'read_file' : 'run_command' }),
+				result(`c${n}`),
+				{ type: 'message', id: `m${n}`, content: [{ type: 'output_text', text: `note ${n}` }] }
+			);
+		}
+		output[1] = { ...output[1], status: 'failed' };
+		const window = selectOutputWindow(output, 50, { live: false });
+		const totals = window.hiddenTotals;
+		const visibleCalls = window.output.filter((item) => item.type === 'function_call').length;
+		expect(totals.toolCallCount).toBe(400 - visibleCalls);
+		expect(totals.toolCounts.read_file + totals.toolCounts.run_command).toBe(totals.toolCallCount);
+		expect(Object.keys(totals.toolCounts)[0]).toBe('read_file');
+		expect(totals.reasoningCount + totals.messageCount + totals.toolCallCount).toBe(
+			window.hiddenSteps
+		);
+		expect(totals.failedCount).toBe(1);
+		// The first group's own hidden run is tiny; the totals are not.
+		expect(window.hiddenRun?.toolCallCount ?? 0).toBeLessThan(2);
 	});
 });

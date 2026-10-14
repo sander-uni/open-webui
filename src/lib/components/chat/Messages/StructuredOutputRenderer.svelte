@@ -91,14 +91,20 @@
 	) as OutputDisplayItem[];
 	// When hidden steps continue the first group, page inside it: the controls then only
 	// show (and only auto-load) while that group is expanded.
+	// Only when every hidden step belongs to that group; otherwise hidden steps span many
+	// groups and messages, and the pager (with its totals) goes above the reply.
 	$: pagerInGroup =
-		displaySettings.enabled && !!outputWindow.hiddenRun && displayItems[0]?.type === 'detail_group';
+		displaySettings.enabled &&
+		outputWindow.hiddenSteps > 0 &&
+		outputWindow.hiddenRun?.steps === outputWindow.hiddenSteps &&
+		displayItems[0]?.type === 'detail_group';
 </script>
 
 {#key windowId}
 	{#if displaySettings.enabled && !pagerInGroup}
 		<ToolChainPager
 			totalSteps={outputWindow.totalSteps}
+			hiddenTotals={outputWindow.hiddenTotals}
 			hiddenSteps={outputWindow.hiddenSteps}
 			pageSize={displaySettings.page_size}
 			autoLoad={displaySettings.auto_load}
@@ -153,6 +159,7 @@
 					{#key windowId}
 						<ToolChainPager
 							totalSteps={outputWindow.totalSteps}
+							hiddenTotals={outputWindow.hiddenTotals}
 							hiddenSteps={outputWindow.hiddenSteps}
 							pageSize={displaySettings.page_size}
 							autoLoad={displaySettings.auto_load}

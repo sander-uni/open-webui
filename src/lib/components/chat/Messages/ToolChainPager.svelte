@@ -2,7 +2,7 @@
 	import { getContext, onMount, tick } from 'svelte';
 	import type { Writable } from 'svelte/store';
 	import type { i18n as I18n } from 'i18next';
-	import { OUTPUT_PAGE_SIZE } from './outputWindow';
+	import { OUTPUT_PAGE_SIZE, type HiddenTotals } from './outputWindow';
 
 	const i18n = getContext<Writable<I18n>>('i18n');
 	export let totalSteps = 0;
@@ -10,6 +10,52 @@
 	export let visibleSteps = OUTPUT_PAGE_SIZE;
 	export let pageSize = OUTPUT_PAGE_SIZE;
 	export let autoLoad = true;
+	export let hiddenTotals: HiddenTotals | null = null;
+
+	// Show the most used tools by name; fold the rest into "other".
+	const MAX_TOOL_NAMES = 4;
+	const number = (value: number) => value.toLocaleString();
+	const plural = (count: number, one: string, other: string) =>
+		$i18n.t(count === 1 ? one : other, { COUNT: number(count) });
+	$: summaryParts = (() => {
+		if (!hiddenTotals || hiddenSteps === 0) return [];
+		const entries = Object.entries(hiddenTotals.toolCounts).sort((a, b) => b[1] - a[1]);
+		const tools = entries
+			.slice(0, MAX_TOOL_NAMES)
+			.map(([name, count]) => `${number(count)} ${name}`);
+		const other = entries.slice(MAX_TOOL_NAMES).reduce((total, [, count]) => total + count, 0);
+		if (other > 0) tools.push($i18n.t('{{COUNT}} other', { COUNT: number(other) }));
+		const calls = plural(
+			hiddenTotals.toolCallCount,
+			'Hidden above: {{COUNT}} tool call',
+			'Hidden above: {{COUNT}} tool calls'
+		);
+		const parts: Array<{ text: string; error?: boolean }> = [
+			{ text: tools.length ? `${calls} (${tools.join(', ')})` : calls }
+		];
+		if (hiddenTotals.failedCount > 0) {
+			parts.push({
+				text: $i18n.t('{{COUNT}} failed or rejected', { COUNT: number(hiddenTotals.failedCount) }),
+				error: true
+			});
+		}
+		if (hiddenTotals.messageCount > 0) {
+			parts.push({
+				text: plural(hiddenTotals.messageCount, '{{COUNT}} message', '{{COUNT}} messages')
+			});
+		}
+		if (hiddenTotals.reasoningCount > 0) {
+			parts.push({
+				text: plural(hiddenTotals.reasoningCount, '{{COUNT}} thought', '{{COUNT}} thoughts')
+			});
+		}
+		if (hiddenTotals.codeInterpreterCount > 0) {
+			parts.push({
+				text: plural(hiddenTotals.codeInterpreterCount, '{{COUNT}} analysis', '{{COUNT}} analyses')
+			});
+		}
+		return parts;
+	})();
 
 	let marker: HTMLDivElement;
 	let scrollRoot: HTMLElement | null = null;
@@ -114,8 +160,8 @@
 			<div class="flex flex-wrap items-center justify-between gap-2 py-2 text-xs text-gray-500">
 				<span aria-live="polite">
 					{$i18n.t('Showing {{COUNT}} of {{TOTAL}} steps', {
-						COUNT: totalSteps - hiddenSteps,
-						TOTAL: totalSteps
+						COUNT: number(totalSteps - hiddenSteps),
+						TOTAL: number(totalSteps)
 					})}
 				</span>
 				<div class="flex gap-3">
@@ -137,6 +183,10 @@
 						>
 					{/if}
 				</div>
+				{#if summaryParts.length}
+					<!-- prettier-ignore -->
+					<div class="tool-chain-hidden-summary basis-full text-gray-400 dark:text-gray-500">{#each summaryParts as part, index}<span class={part.error ? 'text-red-500 dark:text-red-400' : ''}>{index > 0 ? ' · ' : ''}{part.text}</span>{/each}</div>
+				{/if}
 			</div>
 		{/if}
 	</div>
