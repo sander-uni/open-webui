@@ -280,6 +280,7 @@
 			error: 'bg-red-500'
 		}[status?.phase as string] ?? 'bg-gray-400';
 	$: vram = status?.vram;
+	$: ram = status?.ram;
 </script>
 
 <ConfirmDialog
@@ -421,6 +422,26 @@
 								></span>
 							</span>
 							{gib(vram.used_mib)} / {gib(vram.total_mib)} GiB · GPU {vram.util_pct}%
+						</span>
+					{/if}
+					{#if ram}
+						<span
+							class="flex items-center gap-1.5"
+							title={ram.source === 'windows'
+								? $i18n.t('Whole PC (Windows), including WSL')
+								: $i18n.t('WSL only: Windows RAM is not available')}
+						>
+							{ram.source === 'windows' ? $i18n.t('RAM (PC)') : $i18n.t('RAM (WSL)')}
+							<span
+								class="relative h-1.5 w-20 overflow-hidden rounded-full bg-gray-200 dark:bg-white/[0.08]"
+							>
+								<span
+									class="absolute inset-y-0 left-0 rounded-full bg-gray-500 dark:bg-gray-300"
+									style="width: {Math.min(100, (ram.used_mib / ram.total_mib) * 100)}%"
+								></span>
+							</span>
+							{gib(ram.used_mib)} / {gib(ram.total_mib)} GiB{#if ram.source === 'windows' && ram.wsl_used_mib !== undefined}{' '}·
+								WSL {gib(ram.wsl_used_mib)} GiB{/if}
 						</span>
 					{/if}
 					<span>
