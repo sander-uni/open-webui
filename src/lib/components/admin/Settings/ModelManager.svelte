@@ -557,6 +557,13 @@
 										on:click={() => load(model, true)}
 										type="button">{$i18n.t('Load & pin')}</button
 									>
+								{:else if model.loaded}
+									<button
+										class="h-6 rounded-md px-2 text-[0.6875rem] text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-500/10"
+										disabled={busy}
+										on:click={unload}
+										type="button">{$i18n.t('Unload')}</button
+									>
 								{/if}
 								<label
 									class="flex items-center gap-1 text-[0.625rem] text-gray-400"
