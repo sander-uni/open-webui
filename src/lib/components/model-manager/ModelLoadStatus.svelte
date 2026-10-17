@@ -75,7 +75,7 @@
 		</div>
 		{#if !offlineId && show}
 			{#if op || error}
-				<OperationPlan operation={op} problem={error} {admin} technical={tech} technicalOpen />
+				<OperationPlan operation={op} problem={error} {admin} technical={tech} technicalOpen showSteps={false} />
 			{/if}
 			{#if op || view.waiting}
 				<p class="mt-1">{state?.ux?.waiting_action}</p>
@@ -141,7 +141,7 @@
 		</div>
 		{#if !offlineId && show}
 			{#if op || error}
-				<OperationPlan operation={op} problem={error} {admin} technical={tech} technicalOpen />
+				<OperationPlan operation={op} problem={error} {admin} technical={tech} technicalOpen showSteps={false} />
 			{/if}
 			{#if op || view.waiting}
 				<p class="mt-1">{state?.ux?.waiting_action}</p>

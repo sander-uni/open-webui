@@ -6,6 +6,8 @@
 	export let technical = '';
 	// 0.3.2: in chat the admin's technical details show directly, not behind a toggle.
 	export let technicalOpen = false;
+	// 0.3.2: the chat leaves out the step list; the Model Manager page keeps it.
+	export let showSteps = true;
 	const elapsed = (s: number) => s < 60 ? `${s} s elapsed` : `${Math.floor(s / 60)} min ${s % 60} s elapsed`;
 </script>
 
@@ -25,6 +27,7 @@
 	</div>
 	{#if operation}
 		<p class="mt-1 tabular-nums">{elapsed(operation.elapsed_s)}</p>
+		{#if showSteps}
 		<details class="mt-1">
 			<summary class="cursor-pointer">Steps and times</summary>
 			<ol class="mt-1 space-y-2 pl-4 list-decimal">
@@ -37,6 +40,7 @@
 				{/each}
 			</ol>
 		</details>
+		{/if}
 	{/if}
 	{#if admin && (technical || problem?.details)}
 		{#if technicalOpen}
