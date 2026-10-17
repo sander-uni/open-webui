@@ -46,50 +46,64 @@
 			act(() => cancelManagedLoad(localStorage.token));
 		}
 	};
-	const btn = 'rounded-lg border border-gray-200/70 px-2 py-1 disabled:opacity-50 dark:border-white/[0.08]';
+	// min-h-8: a usable touch target on iOS.
+	const btn =
+		'min-h-8 rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs disabled:opacity-50 dark:border-white/[0.08]';
+	$: why = admin ? (view?.admin_why ?? view?.why) : view?.why;
+	$: tech = [state?.detail, state?.log_tail].filter(Boolean).join('\n');
+	$: offlineHelp = admin
+		? 'Check your connection, then open Admin Settings > Model Manager and check the launcher.'
+		: 'Check your connection and try again in a minute. If this continues, ask the admin.';
 </script>
 
 <!-- The live region stays mounted (and unstyled while empty) so changes are announced. -->
-<div
-	class={visible
-		? `min-w-0 max-w-full break-words text-xs text-gray-600 dark:text-gray-300 ${inline ? 'my-2 rounded-xl border border-gray-200 p-3 dark:border-gray-700' : 'py-1'}`
-		: ''}
->
-	<div role="status" aria-live="polite" aria-atomic="true">
+{#if inline}
+	<div
+		class={visible
+			? 'my-2 min-w-0 max-w-full break-words rounded-xl border border-gray-200 p-3 text-xs text-gray-600 dark:border-gray-700 dark:text-gray-300'
+			: ''}
+	>
+		<div role="status" aria-live="polite" aria-atomic="true">
+			{#if offlineId}
+				<p>The model service is not reachable. Progress cannot be checked; an existing load may still be running.</p>
+				<p>{offlineHelp}</p>
+			{:else if show && (!op || op.model !== id) && !error}
+				<p class="font-medium">{view.primary}</p>
+				<p>{admin ? (view.admin_why ?? view.why) : view.why}</p>
+			{/if}
+		</div>
+		{#if !offlineId && show}
+			{#if op || error}
+				<OperationPlan operation={op} problem={error} {admin} technical={tech} />
+			{/if}
+			{#if op || view.waiting}
+				<p class="mt-1">{state?.ux?.waiting_action}</p>
+				{#if !admin}<p>Only an admin can cancel shared preparation. You can stop waiting in this chat.</p>{/if}
+			{/if}
+			{#if admin && state?.phase === 'loading'}
+				<div class="mt-1 flex flex-wrap gap-2">
+					<button type="button" class={btn} disabled={acting || !state?.ux?.actions?.can_cancel} on:click={cancel}
+						>Cancel loading for everyone</button
+					>
+				</div>
+			{/if}
+		{/if}
 		{#if offlineId}
-			<p>The model service is not reachable. Progress cannot be checked; an existing load may still be running.</p>
-			<p>
-				{admin
-					? 'Check your connection, then open Admin Settings > Model Manager and check the launcher.'
-					: 'Check your connection and try again in a minute. If this continues, ask the admin.'}
-			</p>
-		{:else if show && (!op || op.model !== id) && !error}
-			<p class="font-medium">{view.primary}</p>
-			<p>{admin ? (view.admin_why ?? view.why) : view.why}</p>
+			<button type="button" class="mt-1 {btn}" on:click={refreshManagerState}>Check again</button>
 		{/if}
 	</div>
-	{#if !offlineId && show}
-		{#if op || error}
-			<OperationPlan
-				operation={op}
-				problem={error}
-				{admin}
-				technical={[state?.detail, state?.log_tail].filter(Boolean).join('\n')}
-			/>
-		{/if}
-		{#if op || view.waiting}
-			<p class="mt-1">{state?.ux?.waiting_action}</p>
-			{#if !admin}<p>Only an admin can cancel shared preparation. You can stop waiting in this chat.</p>{/if}
-		{/if}
-		{#if admin && (state?.phase === 'loading' || (!inline && !ready))}
-			<div class="mt-1 flex flex-wrap gap-2">
+{:else}
+	{#snippet actions()}
+		{#if show && admin && (state?.phase === 'loading' || !ready)}
+			<div class="flex shrink-0 flex-wrap gap-2">
 				{#if state?.phase === 'loading'}
 					<button type="button" class={btn} disabled={acting || !state?.ux?.actions?.can_cancel} on:click={cancel}
 						>Cancel loading for everyone</button
 					>
 				{/if}
-				{#if !inline && !ready}
-					<!-- Disabled when refused; the reason is the status text above. -->
+				<!-- Not while this same model is already being prepared. Disabled when refused;
+				     the reason is the status text. -->
+				{#if !ready && op?.model !== id}
 					<button
 						type="button"
 						class={btn}
@@ -100,10 +114,46 @@
 				{/if}
 			</div>
 		{/if}
-	{:else if !offlineId && legacy}
-		<p>The model manager needs an update to show preparation steps. Ask the admin.</p>
-	{/if}
-	{#if offlineId}
-		<button type="button" class="mt-1 {btn}" on:click={refreshManagerState}>Check again</button>
-	{/if}
-</div>
+	{/snippet}
+	<!-- fork, 0.12 layout: compact row inside the chat input. The parent sets @container, so
+	     "narrow" means the input itself is narrow: a phone, or the Files panel taking width.
+	     The height cap keeps a long plan from covering the input on a phone keyboard. -->
+	<div
+		class={visible
+			? 'min-w-0 max-w-full max-h-[30dvh] overflow-y-auto overscroll-contain break-words pt-1.5 pb-0.5 text-left text-xs text-gray-600 @2xl:max-h-[40dvh] dark:text-gray-300'
+			: ''}
+	>
+		<div class="flex flex-wrap items-start gap-x-3 gap-y-1">
+			<div class="min-w-0 flex-1 basis-56" role="status" aria-live="polite" aria-atomic="true">
+				{#if offlineId}
+					<p class="font-medium">The model service is not reachable.</p>
+					<p>Progress cannot be checked; an existing load may still be running. {offlineHelp}</p>
+				{:else if show && (!op || op.model !== id) && !error}
+					<p class="font-medium">{view.primary}</p>
+					<p class="hidden @2xl:block">{why}</p>
+					<details class="@2xl:hidden">
+						<summary class="cursor-pointer select-none underline decoration-dotted underline-offset-2">How this works</summary>
+						<p class="mt-0.5">{why}</p>
+					</details>
+				{/if}
+			</div>
+			{#if offlineId}
+				<button type="button" class={btn} on:click={refreshManagerState}>Check again</button>
+			{:else if !op && !error}
+				{@render actions()}
+			{/if}
+		</div>
+		{#if !offlineId && show}
+			{#if op || error}
+				<OperationPlan operation={op} problem={error} {admin} technical={tech} />
+			{/if}
+			{#if op || view.waiting}
+				<p class="mt-1">{state?.ux?.waiting_action}</p>
+				{#if !admin}<p>Only an admin can cancel shared preparation. You can stop waiting in this chat.</p>{/if}
+			{/if}
+			{#if op || error}<div class="mt-1.5">{@render actions()}</div>{/if}
+		{:else if !offlineId && legacy}
+			<p>The model manager needs an update to show preparation steps. Ask the admin.</p>
+		{/if}
+	</div>
+{/if}

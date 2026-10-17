@@ -2270,7 +2270,7 @@
 							</div>
 
 							<!-- fork: model manager status, own full-width row (the picker sits in the toolbar since 0.12) -->
-							<div class="px-3.5 min-w-0 max-w-full" dir="ltr">
+							<div class="@container px-3.5 min-w-0 max-w-full" dir="ltr">
 								<ModelLoadStatus modelId={selectedModelIds[0] ?? ''} />
 							</div>
 

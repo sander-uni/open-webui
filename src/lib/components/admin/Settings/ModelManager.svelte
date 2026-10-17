@@ -271,6 +271,14 @@
 	};
 
 	$: models = (status?.models ?? []) as ManagedModel[];
+	// Fork: an explanation that is identical for every model is shown once above the list,
+	// not on each card. A model-specific reason (a pin blocking it, say) stays on its card.
+	const whyOf = (m: ManagedModel) => {
+		const v = status?.ux?.models?.[m.id];
+		return (v?.admin_why ?? v?.why ?? '') as string;
+	};
+	$: sharedWhy =
+		models.length > 1 && models.every((m) => whyOf(m) === whyOf(models[0])) ? whyOf(models[0]) : '';
 	$: oldFilterInstalled = !!filterInfo && !!filterFn;
 	$: phaseColor =
 		{
@@ -345,13 +353,19 @@
 				<button type="submit" disabled={savingIdle || !idleDirty || !!unreachable}>{$i18n.t('Save')}</button>
 				<p class="text-xs">{$i18n.t('0 means never. A pinned model stays ready. The next message after unloading needs a fresh start; its cost is shown below. Shortening this time may put an already quiet model away immediately.')}</p>
 			</form>
+			<div class="space-y-1">
+				<h3 class="font-medium">{$i18n.t('Models')}</h3>
+				{#if sharedWhy}<p class="text-xs">{sharedWhy}</p>{/if}
+				<!-- Each card's first line already carries that model's time estimate. -->
+				<p class="text-xs">{$i18n.t('A model that was put away needs preparation again before its next message.')}</p>
+			</div>
 			{#each models as model (model.ref)}
 				{@const view = status.ux?.models?.[model.id]}
 				{@const canPrepare = !!view?.can_load || (view?.can_replace_pin ?? (!!view?.blocked && status.phase === 'ready'))}
 				<div class="space-y-1 rounded-xl border border-gray-100/70 bg-gray-50/50 px-3 py-2.5 dark:border-white/[0.05] dark:bg-white/[0.02]">
 					<p class="font-medium break-all">{model.id}</p>
-					<p>{view?.primary}</p><p class="text-xs">{view?.admin_why ?? view?.why}</p>
-					<p class="text-xs">{view?.reload_text}</p>
+					<p>{view?.primary}</p>
+					{#if !sharedWhy && whyOf(model)}<p class="text-xs">{whyOf(model)}</p>{/if}
 					<div class="flex flex-wrap items-center gap-3">
 						<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]" disabled={busy || !!unreachable || !canPrepare} on:click={() => load(model)}>{$i18n.t('Prepare now')}</button>
 						<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]" disabled={busy || !!unreachable || !canPrepare} on:click={() => load(model, true)}>{$i18n.t('Prepare and keep ready')}</button>
