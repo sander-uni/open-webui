@@ -1,4 +1,4 @@
-import { setAudioSession } from './audioSession'; // fork
+import { claimAudioSession } from './audioSession'; // fork
 
 type AudioQueueEvent = 'stop' | 'empty-queue' | 'id-change' | 'error';
 
@@ -18,6 +18,7 @@ export class AudioQueue {
 	private current: string | null = null;
 	private readonly _onEnded = () => this.next();
 	private readonly _onGesture = () => this.#unlock();
+	private releaseSession: (() => void) | null = null; // fork: iOS audio session claim
 
 	id: string | null = null;
 	onStopped: OnStoppedCallback | null = null;
@@ -81,7 +82,7 @@ export class AudioQueue {
 
 		if (this.current) {
 			const url = this.current;
-			setAudioSession('auto'); // fork: real speech, take the audio session
+			this.releaseSession ??= claimAudioSession(); // fork: real speech, take the audio session
 			this.audio.src = url;
 			this.audio.muted = false;
 			this.audio.play().catch((error) => {
@@ -119,12 +120,13 @@ export class AudioQueue {
 	 * Callers that need the callback should invoke it themselves.
 	 */
 	#halt() {
-		setAudioSession('ambient'); // fork: idle again, let other apps' audio play
 		this.audio.pause();
 		this.audio.currentTime = 0;
 		this.audio.removeAttribute('src');
 		this.audio.load();
 		this.queue = [];
 		this.current = null;
+		this.releaseSession?.(); // fork: idle again, let other apps' audio play
+		this.releaseSession = null;
 	}
 }

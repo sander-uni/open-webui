@@ -13,13 +13,7 @@
 		saveModelManagerSettings,
 		unloadManagedModel
 	} from '$lib/apis/model-manager';
-	import {
-		createNewFunction,
-		getFunctionById,
-		toggleFunctionById,
-		toggleGlobalById,
-		updateFunctionById
-	} from '$lib/apis/functions';
+	import { deleteFunctionById, getFunctionById } from '$lib/apis/functions';
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
@@ -200,26 +194,14 @@
 		run(() => saveModelManagerSettings(localStorage.token, { hidden: [...hidden] }));
 	};
 
-	const installFilter = async () => {
+	// The old loading-status filter is retired (replies show loading status themselves); this
+	// removes it if an earlier version of this page installed it.
+	const removeFilter = async () => {
 		if (!filterInfo) return;
 		filterBusy = true;
 		try {
-			const form = {
-				id: filterInfo.id,
-				name: filterInfo.name,
-				content: filterInfo.content,
-				meta: { description: filterInfo.description }
-			};
-			let fn = filterFn;
-			if (!fn) {
-				fn = await createNewFunction(localStorage.token, form);
-			} else if (fn.content !== filterInfo.content) {
-				fn = await updateFunctionById(localStorage.token, filterInfo.id, form);
-			}
-			fn = await getFunctionById(localStorage.token, filterInfo.id);
-			if (!fn.is_active) await toggleFunctionById(localStorage.token, filterInfo.id);
-			if (!fn.is_global) await toggleGlobalById(localStorage.token, filterInfo.id);
-			toast.success($i18n.t('Loading-status filter installed and turned on for all models.'));
+			await deleteFunctionById(localStorage.token, filterInfo.id);
+			toast.success($i18n.t('Removed the old loading-status filter.'));
 		} catch (error) {
 			toast.error(`${error}`);
 		} finally {
@@ -285,15 +267,7 @@
 	$: groups = ['ninfer', 'strata', 'ollama']
 		.filter((engine) => (status?.engines ?? []).includes(engine))
 		.map((engine) => ({ engine, models: models.filter((m) => m.engine === engine) }));
-	$: filterState = !filterInfo
-		? 'unknown'
-		: !filterFn
-			? 'missing'
-			: filterFn.content !== filterInfo.content
-				? 'outdated'
-				: !filterFn.is_active || !filterFn.is_global
-					? 'off'
-					: 'ok';
+	$: oldFilterInstalled = !!filterInfo && !!filterFn;
 	$: phaseColor =
 		{
 			ready: 'bg-green-500',
@@ -614,42 +588,32 @@
 				{/each}
 			</div>
 
-			<!-- loading-status filter -->
-			<div
-				class="mt-5 flex items-center justify-between gap-3 rounded-xl border border-gray-100/70 px-3 py-2.5 dark:border-white/[0.05]"
-			>
-				<div class="min-w-0">
-					<div class="text-xs font-medium text-gray-700 dark:text-gray-300">
-						{$i18n.t('Loading status in chats')}
-					</div>
-					<div class="text-[0.6875rem] text-gray-500 dark:text-gray-400">
-						{#if filterState === 'ok'}
-							{$i18n.t('On: a chat shows "Loading <model>..." while its model loads.')}
-						{:else if filterState === 'outdated'}
-							{$i18n.t('Installed, but a newer version comes with this Open WebUI build.')}
-						{:else if filterState === 'off'}
-							{$i18n.t('Installed but not active for all models.')}
-						{:else if filterState === 'missing'}
+			<!-- old loading-status filter (retired) -->
+			{#if oldFilterInstalled}
+				<div
+					class="mt-5 flex items-center justify-between gap-3 rounded-xl border border-amber-200/60 bg-amber-50/50 px-3 py-2.5 dark:border-amber-500/20 dark:bg-amber-500/5"
+				>
+					<div class="min-w-0">
+						<div class="text-xs font-medium text-gray-700 dark:text-gray-300">
+							{$i18n.t('Old loading-status filter installed')}
+						</div>
+						<div class="text-[0.6875rem] text-gray-500 dark:text-gray-400">
 							{$i18n.t(
-								'Not installed. Chats still work, but show no progress while a model loads.'
+								'Replies now show loading status themselves. The old filter loaded models through a separate request, which could let another chat swap the model out, so remove it.'
 							)}
-						{:else}
-							{$i18n.t('Unavailable')}
-						{/if}
+						</div>
 					</div>
-				</div>
-				{#if filterState !== 'ok' && filterState !== 'unknown'}
 					<button
 						class="flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-gray-900 px-2.5 text-xs text-white transition hover:bg-black disabled:opacity-60 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white"
 						disabled={filterBusy}
-						on:click={installFilter}
+						on:click={removeFilter}
 						type="button"
 					>
 						{#if filterBusy}<Spinner className="size-3" />{/if}
-						{filterState === 'missing' ? $i18n.t('Install') : $i18n.t('Update and turn on')}
+						{$i18n.t('Remove')}
 					</button>
-				{/if}
-			</div>
+				</div>
+			{/if}
 
 			<!-- recent events -->
 			{#if status.events?.length}

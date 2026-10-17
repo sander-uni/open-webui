@@ -4,7 +4,7 @@
 	import { toast } from 'svelte-sonner';
 	import Selector from './ModelSelector/Selector.svelte';
 	import ModelLoadStatus from '$lib/components/model-manager/ModelLoadStatus.svelte'; // fork
-	import { managedId, modelSelectRequest } from '$lib/components/model-manager/state'; // fork
+	import { managedId, managerState, modelSelectRequest } from '$lib/components/model-manager/state'; // fork
 
 	import { updateUserSettings } from '$lib/apis/users';
 	import { resolveLocalizedModelName } from '$lib/utils/localizedContent';
@@ -60,13 +60,13 @@
 	// fork: a model loaded from Admin Settings > Model Manager becomes the picked model
 	let selectRequestSeen = Date.now();
 	$: if ($modelSelectRequest && $modelSelectRequest.at > selectRequestSeen && !disabled) {
-		selectRequestSeen = $modelSelectRequest.at;
 		const wanted = $modelSelectRequest.id;
 		const match =
 			$models.find((m) => m.id === wanted) ??
-			$models.find((m) => managedId(m) === wanted && !m?.info?.base_model_id) ??
-			$models.find((m) => managedId(m) === wanted);
+			$models.find((m) => managedId(m, $managerState) === wanted && !m?.info?.base_model_id) ??
+			$models.find((m) => managedId(m, $managerState) === wanted);
 		if (match) {
+			selectRequestSeen = $modelSelectRequest.at;
 			selectedModels = [match.id];
 		}
 	}

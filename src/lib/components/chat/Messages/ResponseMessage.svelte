@@ -65,6 +65,7 @@
 	import RegenerateMenu from './ResponseMessage/RegenerateMenu.svelte';
 	import StatusHistory from './ResponseMessage/StatusHistory.svelte';
 	import ModelLoadStatus from '$lib/components/model-manager/ModelLoadStatus.svelte'; // fork
+	import { claimAudioSession } from '$lib/utils/audioSession'; // fork
 	import FullHeightIframe from '$lib/components/common/FullHeightIframe.svelte';
 	import OutputEditView from './OutputEditView.svelte';
 	import { getOutputText, replaceOutputMessageText, type OutputItem } from './structuredOutput';
@@ -228,6 +229,7 @@
 		}
 	};
 
+	let releaseSpeechSession: (() => void) | null = null; // fork: iOS audio session claim
 	const stopAudio = () => {
 		speakAbort?.abort();
 		speakAbort = null;
@@ -236,6 +238,8 @@
 			speechSynthesis.cancel();
 			$audioQueue?.stop();
 		} catch {}
+		releaseSpeechSession?.(); // fork
+		releaseSpeechSession = null;
 
 		speaking = false;
 		speakingIdx = undefined;
@@ -273,7 +277,14 @@
 					const speech = new SpeechSynthesisUtterance(content);
 					speech.rate = $settings.audio?.tts?.playbackRate ?? 1;
 
+					const releaseThisSpeech = claimAudioSession(); // fork
+					releaseSpeechSession = releaseThisSpeech;
+					speech.onerror = () => {
+						releaseThisSpeech(); // fork
+						speaking = false;
+					};
 					speech.onend = () => {
+						releaseThisSpeech(); // fork
 						speaking = false;
 						if ($settings.conversationMode) {
 							document.getElementById('voice-input-button')?.click();

@@ -23,42 +23,65 @@ let refreshNow: () => void = () => {};
 export const managerState = writable<ManagerState | null>(null, (set) => {
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let stopped = false;
+	let polling = false;
+	let again = false; // a refresh asked for while a poll was in flight
+	let controller: AbortController | null = null;
 
 	const poll = async () => {
 		if (stopped) return;
+		if (polling) {
+			again = true;
+			return;
+		}
+		polling = true;
+		controller = new AbortController();
 		let delay = 4000;
 		if (typeof document !== 'undefined' && document.hidden) {
 			delay = 4000;
 		} else {
 			try {
 				const res = await fetch(`${WEBUI_API_BASE_URL}/model-manager/state`, {
+					signal: controller.signal,
 					headers: { authorization: `Bearer ${localStorage.token}` }
 				});
 				if (res.ok) {
 					const state = (await res.json()) as ManagerState;
+					if (stopped) return;
 					set(state);
 					if (state.phase === 'loading' || state.phase === 'unloading' || state.switch_to) {
 						delay = 1000;
 					}
 				} else {
+					if (stopped) return;
 					set(null);
 					delay = 30000;
 				}
 			} catch {
+				if (stopped) return;
 				set(null);
 				delay = 30000;
 			}
 		}
-		if (!stopped) timer = setTimeout(poll, delay);
+		polling = false;
+		if (stopped) return;
+		if (again) {
+			again = false;
+			delay = 0;
+		}
+		timer = setTimeout(poll, delay);
 	};
 
 	refreshNow = () => {
-		if (timer) clearTimeout(timer);
+		if (timer) {
+			clearTimeout(timer);
+			timer = null;
+		}
 		poll();
 	};
 	poll();
 	return () => {
 		stopped = true;
+		controller?.abort();
 		if (timer) clearTimeout(timer);
 		refreshNow = () => {};
 	};

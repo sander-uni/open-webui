@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { setAudioSession } from '$lib/utils/audioSession'; // fork
+	import { claimAudioSession } from '$lib/utils/audioSession'; // fork
 	import { toast } from 'svelte-sonner';
 	import { tick, getContext, onMount, onDestroy } from 'svelte';
 	import { config, settings } from '$lib/stores';
@@ -441,8 +441,9 @@
 		}
 	};
 
+	let releaseAudioSession: (() => void) | null = null; // fork
 	onMount(() => {
-		setAudioSession('auto'); // fork: recording needs the audio session
+		releaseAudioSession = claimAudioSession(); // fork: recording needs the audio session
 		window.addEventListener('keydown', handleKeyDown);
 		document.addEventListener('visibilitychange', handleVisibilityChange);
 
@@ -462,12 +463,12 @@
 	});
 
 	onDestroy(() => {
-		setAudioSession('ambient'); // fork
 		window.removeEventListener('keydown', handleKeyDown);
 		document.removeEventListener('visibilitychange', handleVisibilityChange);
 		releaseWakeLock();
 		// remove resize observer
 		resizeObserver.disconnect();
+		releaseAudioSession?.(); // fork
 	});
 </script>
 
