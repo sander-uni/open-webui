@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { claimAudioSession } from '$lib/utils/audioSession'; // fork
 	import { config, models, settings, showCallOverlay, TTSWorker } from '$lib/stores';
 	import { onMount, tick, getContext, onDestroy, createEventDispatcher } from 'svelte';
 
@@ -725,7 +726,9 @@
 		}
 	};
 
+	let releaseAudioSession: (() => void) | null = null; // fork
 	onMount(async () => {
+		releaseAudioSession = claimAudioSession(); // fork: a call needs the audio session
 		if (bridge) {
 			document.addEventListener('keydown', handleKeydown);
 			return;
@@ -807,6 +810,7 @@
 	onDestroy(async () => {
 		if (bridge) {
 			document.removeEventListener('keydown', handleKeydown);
+			releaseAudioSession?.(); // fork
 			return;
 		}
 		destroyed = true;
@@ -826,6 +830,7 @@
 		await tick();
 
 		await stopAllAudio();
+		releaseAudioSession?.(); // fork: after the call's media is stopped
 	});
 </script>
 
