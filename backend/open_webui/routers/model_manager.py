@@ -13,7 +13,7 @@ from typing import Any
 
 import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Request
-from open_webui.utils.auth import get_admin_user
+from open_webui.utils.auth import get_admin_user, get_verified_user
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +48,13 @@ async def _call(method: str, path: str, body: dict | None = None) -> Any:
 @router.get('/status')
 async def get_status(user=Depends(get_admin_user)):
     return await _call('GET', '/mm/status')
+
+
+@router.get('/state')
+async def get_state(user=Depends(get_verified_user)):
+    """Small state for the chat model picker (any signed-in user): which local model is loaded or
+    loading, and which model ids the manager handles."""
+    return await _call('GET', '/mm/state')
 
 
 @router.post('/load')

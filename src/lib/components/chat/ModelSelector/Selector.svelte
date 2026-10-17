@@ -52,6 +52,7 @@
 	import TagSelector from '$lib/components/workspace/common/TagSelector.svelte';
 
 	import ModelItem from './ModelItem.svelte';
+	import { managerBlock } from '$lib/components/model-manager/state'; // fork
 
 	const i18n: any = getContext('i18n');
 	const dispatch = createEventDispatcher();
@@ -408,6 +409,12 @@
 	};
 
 	const selectItem = (item, index: number) => {
+		// fork: the local model manager is loading or has another model pinned
+		const blocked = managerBlock(item?.model);
+		if (blocked) {
+			toast.info(blocked);
+			return;
+		}
 		selectedModelIdx = index;
 
 		if (values) {
