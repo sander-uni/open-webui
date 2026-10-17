@@ -11,6 +11,8 @@ import logging
 import os
 from typing import Any
 
+from urllib.parse import quote
+
 import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Request
 from open_webui.utils.auth import get_admin_user, get_verified_user
@@ -66,6 +68,22 @@ async def get_state(user=Depends(get_verified_user)):
     """Small state for the chat model picker (any signed-in user): which local model is loaded or
     loading, and which model ids the manager handles."""
     return await _call('GET', '/mm/state')
+
+
+# Temporary chats are never saved; their ids name a browser session (utils/chatId.ts).
+_TEMPORARY_PREFIXES = ('temporary:', 'local:')
+
+
+@router.get('/chat-stats/{chat_id}')
+async def get_chat_stats(chat_id: str, user=Depends(get_verified_user)):
+    """0.3.2: speed and context figures of one chat, for the chat input. The chat's owner and
+    admins only; the manager keeps them per chat id."""
+    if user.role != 'admin' and not chat_id.startswith(_TEMPORARY_PREFIXES):
+        from open_webui.models.chats import Chats  # here, so this router imports on its own
+
+        if await Chats.get_chat_by_id_and_user_id(chat_id, user.id) is None:
+            raise HTTPException(status_code=404, detail='Chat not found')
+    return await _call('GET', f'/mm/chat-stats?chat_id={quote(chat_id, safe="")}')
 
 
 @router.post('/load')

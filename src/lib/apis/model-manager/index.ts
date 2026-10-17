@@ -37,3 +37,27 @@ export const saveModelManagerSettings = (
 ) => call(token, 'POST', '/settings', settings);
 
 export const getModelManagerFilter = (token: string) => call(token, 'GET', '/filter');
+
+// 0.3.2: speed and context figures of one chat, for the chat input.
+export type ChatStats = {
+	phase: 'none' | 'idle' | 'prefill' | 'decode' | 'compacting';
+	elapsed_s?: number;
+	decode_tps?: number;
+	prefill_tps?: number;
+	ctx_used?: number;
+	ctx_max?: number;
+	model?: string;
+};
+
+export const getChatStats = async (
+	token: string,
+	chatId: string,
+	signal?: AbortSignal
+): Promise<ChatStats | null> => {
+	const res = await fetch(
+		`${WEBUI_API_BASE_URL}/model-manager/chat-stats/${encodeURIComponent(chatId)}`,
+		{ headers: { Accept: 'application/json', authorization: `Bearer ${token}` }, signal }
+	);
+	if (!res.ok) return null;
+	return (await res.json().catch(() => null)) as ChatStats | null;
+};

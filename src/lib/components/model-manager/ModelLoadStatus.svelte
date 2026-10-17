@@ -25,7 +25,9 @@
 	$: op = state?.ux?.operation?.outcome === 'running' ? state.ux.operation : null;
 	$: admin = $user?.role === 'admin';
 	$: error = view?.error;
-	$: show = !!id && !!view && (!inline || !!op || !!error || !!view.waiting);
+	// 0.3.2: the input row only appears while the model is not ready (the stats next to the
+	// model name cover a ready one); the under-reply card only while something is happening.
+	$: show = !!id && !!view && (!!op || !!error || !!view.waiting || (!inline && !ready));
 	$: ready = !!id && state?.phase === 'ready' && state?.model === id;
 	$: legacy = !!id && !!state && !state.ux && !inline;
 	$: visible = !!offlineId || show || legacy;
@@ -49,7 +51,6 @@
 	// min-h-8: a usable touch target on iOS.
 	const btn =
 		'min-h-8 rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs disabled:opacity-50 dark:border-white/[0.08]';
-	$: why = admin ? (view?.admin_why ?? view?.why) : view?.why;
 	$: tech = [state?.detail, state?.log_tail].filter(Boolean).join('\n');
 	$: offlineHelp = admin
 		? 'Check your connection, then open Admin Settings > Model Manager and check the launcher.'
@@ -74,7 +75,7 @@
 		</div>
 		{#if !offlineId && show}
 			{#if op || error}
-				<OperationPlan operation={op} problem={error} {admin} technical={tech} />
+				<OperationPlan operation={op} problem={error} {admin} technical={tech} technicalOpen />
 			{/if}
 			{#if op || view.waiting}
 				<p class="mt-1">{state?.ux?.waiting_action}</p>
@@ -130,11 +131,6 @@
 					<p>Progress cannot be checked; an existing load may still be running. {offlineHelp}</p>
 				{:else if show && (!op || op.model !== id) && !error}
 					<p class="font-medium">{view.primary}</p>
-					<p class="hidden @2xl:block">{why}</p>
-					<details class="@2xl:hidden">
-						<summary class="cursor-pointer select-none underline decoration-dotted underline-offset-2">How this works</summary>
-						<p class="mt-0.5">{why}</p>
-					</details>
 				{/if}
 			</div>
 			{#if offlineId}
@@ -145,7 +141,7 @@
 		</div>
 		{#if !offlineId && show}
 			{#if op || error}
-				<OperationPlan operation={op} problem={error} {admin} technical={tech} />
+				<OperationPlan operation={op} problem={error} {admin} technical={tech} technicalOpen />
 			{/if}
 			{#if op || view.waiting}
 				<p class="mt-1">{state?.ux?.waiting_action}</p>

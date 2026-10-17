@@ -82,6 +82,7 @@
 	import VoiceRecording from './MessageInput/VoiceRecording.svelte';
 	import ModelSelector from './ModelSelector.svelte';
 	import ModelLoadStatus from '$lib/components/model-manager/ModelLoadStatus.svelte'; // fork
+	import ModelStats from '$lib/components/model-manager/ModelStats.svelte'; // fork
 	import ModelControls from './MessageInput/ModelControls.svelte';
 
 	import ToolServersModal from './ToolServersModal.svelte';
@@ -2643,6 +2644,10 @@
 								</div>
 
 								<div class="self-end flex space-x-1 mr-1 min-w-0 gap-[0.03125rem]">
+									<!-- fork 0.3.2: speed and context of this chat (hidden on phone widths) -->
+									<div class="hidden sm:flex items-center pr-1">
+										<ModelStats chatId={chatId} active={isActive} />
+									</div>
 									<div class="flex min-w-0 max-w-[10rem] items-center sm:max-w-[13rem]">
 										<ModelSelector
 											bind:this={modelSelector}

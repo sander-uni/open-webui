@@ -2,7 +2,11 @@
 	// Fork addition: Admin Settings > Model Manager. Talks to the local model manager
 	// (modelmgr, started by start_webui.sh) through /api/v1/model-manager.
 	import { getContext, onDestroy, onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { toast } from 'svelte-sonner';
+	import { config, models as owuiModels, settings } from '$lib/stores';
+	import { getModels } from '$lib/apis';
+	import { createNewModel, getModelById, updateModelById } from '$lib/apis/models';
 
 	import {
 		cancelManagedLoad,
@@ -18,7 +22,7 @@
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import OperationPlan from '$lib/components/model-manager/OperationPlan.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
-	import { refreshManagerState, requestModelSelection } from '$lib/components/model-manager/state';
+	import { managedId, refreshManagerState, requestModelSelection } from '$lib/components/model-manager/state';
 
 	const i18n = getContext('i18n');
 
@@ -65,6 +69,7 @@
 			if (!idleDirty) {
 				idleMinutes = status?.settings?.idle_minutes ?? 60;
 			}
+			moveHiddenToOpenWebUI();
 		} catch (error) {
 			unreachable = 'The model service is not reachable. Progress cannot be checked. Check the connection, start_webui.sh and logs/modelmgr.log before retrying messages.';
 		} finally {
@@ -194,11 +199,106 @@
 		}
 	};
 
-	const setListed = (model: ManagedModel, listed: boolean) => {
-		const hidden = new Set<string>(status?.settings?.hidden ?? []);
-		if (listed) hidden.delete(model.id);
-		else hidden.add(model.id);
-		run(() => saveModelManagerSettings(localStorage.token, { hidden: [...hidden] }));
+	// 0.3.2: "Show in model picker" uses Open WebUI's own hide flag (the eye in Admin Settings >
+	// Models), per base model and per workspace model. It only removes a model from the picker;
+	// it still answers in existing chats and as the base of workspace models. (Until 0.3.1 the
+	// manager left hidden ids out of its model list, which made Open WebUI treat them as gone.)
+	type Version = { id: string; name: string; original: boolean; hidden: boolean };
+
+	const versionsOf = (base: ManagedModel, all: any[]): Version[] => {
+		const ids = { managed: models.map((m) => m.id) } as any;
+		const own = all.find((m) => m.id === base.id);
+		const derived = all
+			.filter((m) => m.id !== base.id && m?.info?.base_model_id && managedId(m, ids) === base.id)
+			.sort((a, b) => `${a.name ?? a.id}`.localeCompare(`${b.name ?? b.id}`));
+		return [
+			{
+				id: base.id,
+				name: own?.name ?? base.id,
+				original: true,
+				hidden: !!own?.info?.meta?.hidden || (status?.settings?.hidden ?? []).includes(base.id)
+			},
+			...derived.map((m) => ({
+				id: m.id,
+				name: m.name ?? m.id,
+				original: false,
+				hidden: !!m?.info?.meta?.hidden
+			}))
+		];
+	};
+
+	const refreshModels = async () =>
+		owuiModels.set(
+			await getModels(
+				localStorage.token,
+				get(config)?.features?.enable_direct_connections && (get(settings)?.directConnections ?? null),
+				false,
+				true
+			)
+		);
+
+	const writeHidden = async (id: string, hidden: boolean) => {
+		const saved = await getModelById(localStorage.token, id).catch(() => null);
+		if (saved?.id) {
+			// No access_grants in the update: who may use the model stays as it is.
+			await updateModelById(localStorage.token, id, {
+				id,
+				name: saved.name ?? id,
+				base_model_id: saved.base_model_id ?? null,
+				meta: { ...(saved.meta ?? {}), hidden },
+				params: saved.params ?? {},
+				is_active: saved.is_active ?? true
+			});
+		} else {
+			// A base model with no saved settings yet: the same record the eye toggle creates.
+			const listed = get(owuiModels).find((m: any) => m.id === id);
+			await createNewModel(localStorage.token, {
+				id,
+				name: listed?.name ?? id,
+				base_model_id: null,
+				meta: { hidden },
+				params: {},
+				access_grants: [],
+				is_active: true
+			});
+		}
+	};
+
+	let pickerBusy = new Set<string>();
+	const setPickerVisible = async (v: Version, visible: boolean) => {
+		pickerBusy = new Set([...pickerBusy, v.id]);
+		try {
+			await writeHidden(v.id, !visible);
+			await refreshModels();
+		} catch (error) {
+			toast.error(`${error}`);
+		} finally {
+			pickerBusy.delete(v.id);
+			pickerBusy = new Set(pickerBusy);
+		}
+	};
+
+	// One-time move of models hidden through the manager (0.3.1) to Open WebUI's flag.
+	let moving = false;
+	const moveHiddenToOpenWebUI = async () => {
+		const ids: string[] = status?.settings?.hidden ?? [];
+		if (moving || !ids.length) return;
+		moving = true;
+		try {
+			for (const id of ids) await writeHidden(id, true);
+			await saveModelManagerSettings(localStorage.token, { hidden: [] });
+			await refreshModels();
+			toast.success(
+				$i18n.t(
+					'Hidden models now use Open WebUI\'s own hide setting: still out of the picker, but they keep answering.'
+				)
+			);
+		} catch (error) {
+			toast.error(`${error}`);
+		} finally {
+			moving = false;
+			refresh();
+		}
 	};
 
 	// The old loading-status filter is retired (replies show loading status themselves); this
@@ -342,11 +442,8 @@
 				</label>
 				<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]"
 					disabled={busy || !!unreachable || !status.ux?.actions?.can_cancel} on:click={cancelLoad}>{$i18n.t('Cancel loading for everyone')}</button>
-				<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]"
-					disabled={busy || !!unreachable || !status.ux?.actions?.can_unload} on:click={unload}>{$i18n.t('Put model away (Unload)')}</button>
 			</div>
 			<p class="text-xs">{$i18n.t('Pin never expires. It prevents automatic unloading and blocks other models until you unpin. Unload puts the model away; messages already answering can be interrupted only after confirmation. Cancel is available only during preparation and affects everyone waiting for that model.')}</p>
-			{#if !status.ux?.actions?.can_unload}<p class="text-xs">{$i18n.t('Unload is unavailable until a model is ready.')}</p>{/if}
 			<form class="space-y-2" on:submit|preventDefault={saveIdle}>
 				<label for="mm-idle">{$i18n.t('Put the model away after this many quiet minutes')}</label>
 				<input id="mm-idle" class="w-24 rounded border p-1" type="number" min="0" max="100000" step="1" bind:value={idleMinutes} on:input={() => (idleDirty = true)} />
@@ -362,6 +459,8 @@
 			{#each models as model (model.ref)}
 				{@const view = status.ux?.models?.[model.id]}
 				{@const canPrepare = !!view?.can_load || (view?.can_replace_pin ?? (!!view?.blocked && status.phase === 'ready'))}
+				{@const versions = versionsOf(model, $owuiModels)}
+				{@const shown = versions.filter((v) => !v.hidden).length}
 				<div class="space-y-1 rounded-xl border border-gray-100/70 bg-gray-50/50 px-3 py-2.5 dark:border-white/[0.05] dark:bg-white/[0.02]">
 					<p class="font-medium break-all">{model.id}</p>
 					<p>{view?.primary}</p>
@@ -369,11 +468,34 @@
 					<div class="flex flex-wrap items-center gap-3">
 						<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]" disabled={busy || !!unreachable || !canPrepare} on:click={() => load(model)}>{$i18n.t('Prepare now')}</button>
 						<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]" disabled={busy || !!unreachable || !canPrepare} on:click={() => load(model, true)}>{$i18n.t('Prepare and keep ready')}</button>
-						<label class="flex items-center gap-2">{$i18n.t('Show in model picker')}<Switch state={!model.hidden} disabled={busy || !!unreachable} on:change={(e) => setListed(model, e.detail)} /></label>
+						{#if status.model?.id === model.id}
+							<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]" disabled={busy || !!unreachable || !status.ux?.actions?.can_unload} on:click={unload}>{$i18n.t('Put away (Unload)')}</button>
+						{/if}
 					</div>
+					<!-- 0.3.2: the original and its workspace models, each with its own picker switch. -->
+					<details class="text-xs">
+						<summary class="cursor-pointer select-none py-0.5">
+							{$i18n.t('In the model picker')}: {shown}/{versions.length}
+						</summary>
+						<ul class="mt-1 space-y-1.5">
+							{#each versions as v (v.id)}
+								<li class="flex items-center justify-between gap-3">
+									<span class="min-w-0 break-all">
+										{v.name}{#if v.original}<span class="text-gray-500">&nbsp;· {$i18n.t('original')}</span>{/if}
+										{#if v.name !== v.id}<span class="block text-[0.6875rem] text-gray-500">{v.id}</span>{/if}
+									</span>
+									<Switch
+										state={!v.hidden}
+										disabled={!!unreachable || moving || pickerBusy.has(v.id)}
+										on:change={(e) => setPickerVisible(v, e.detail)}
+									/>
+								</li>
+							{/each}
+						</ul>
+					</details>
 				</div>
 			{/each}
-			<p class="text-xs">{$i18n.t('Hiding only removes a model from the picker. It does not stop it or block existing chats. Prepare now may switch away from the current model; running replies finish first.')}</p>
+			<p class="text-xs">{$i18n.t('Hiding only removes a model from the picker. It keeps answering in existing chats and as the base of workspace models. Prepare now may switch away from the current model; running replies finish first.')}</p>
 			{#if oldFilterInstalled}
 				<p>{$i18n.t('The old loading-status filter is installed. Remove it; replies now show preparation steps themselves.')}</p>
 				<button class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]" disabled={filterBusy} type="button" on:click={removeFilter}>{$i18n.t('Remove old filter')}</button>

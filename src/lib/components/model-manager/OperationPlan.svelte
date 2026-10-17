@@ -4,6 +4,8 @@
 	export let problem: any = null;
 	export let admin = false;
 	export let technical = '';
+	// 0.3.2: in chat the admin's technical details show directly, not behind a toggle.
+	export let technicalOpen = false;
 	const elapsed = (s: number) => s < 60 ? `${s} s elapsed` : `${Math.floor(s / 60)} min ${s % 60} s elapsed`;
 </script>
 
@@ -37,9 +39,14 @@
 		</details>
 	{/if}
 	{#if admin && (technical || problem?.details)}
-		<details class="mt-2">
-			<summary class="cursor-pointer">Technical details for the admin</summary>
+		{#if technicalOpen}
+			<p class="mt-2 font-medium">Technical details for the admin</p>
 			<pre class="mt-1 whitespace-pre-wrap break-all font-mono text-[0.6875rem]">{problem?.details ?? technical}</pre>
-		</details>
+		{:else}
+			<details class="mt-2">
+				<summary class="cursor-pointer">Technical details for the admin</summary>
+				<pre class="mt-1 whitespace-pre-wrap break-all font-mono text-[0.6875rem]">{problem?.details ?? technical}</pre>
+			</details>
+		{/if}
 	{/if}
 </div>
