@@ -21,11 +21,21 @@ router = APIRouter()
 
 MODEL_MANAGER_URL = os.environ.get('MODEL_MANAGER_URL', 'http://127.0.0.1:8099').rstrip('/')
 _TIMEOUT = aiohttp.ClientTimeout(total=30)
+# Cancel/Unload wait for the engine stop plus its port and RAM release (Strata: minutes).
+# Status calls keep the short budget.
+try:
+    _OPERATION_S = float(os.environ.get('MODEL_MANAGER_OPERATION_TIMEOUT_S') or 600)
+except ValueError:
+    log.warning('MODEL_MANAGER_OPERATION_TIMEOUT_S is not a number; using 600')
+    _OPERATION_S = 600.0
+_OPERATION_TIMEOUT = aiohttp.ClientTimeout(total=_OPERATION_S, sock_connect=10)
+_SLOW_PATHS = ('/mm/cancel', '/mm/unload')
 
 
 async def _call(method: str, path: str, body: dict | None = None) -> Any:
     try:
-        async with aiohttp.ClientSession(timeout=_TIMEOUT, trust_env=False) as session:
+        timeout = _OPERATION_TIMEOUT if path in _SLOW_PATHS else _TIMEOUT
+        async with aiohttp.ClientSession(timeout=timeout, trust_env=False) as session:
             async with session.request(method, f'{MODEL_MANAGER_URL}{path}', json=body) as resp:
                 try:
                     data = await resp.json(content_type=None)
@@ -38,10 +48,11 @@ async def _call(method: str, path: str, body: dict | None = None) -> Any:
     except HTTPException:
         raise
     except (aiohttp.ClientError, TimeoutError) as e:
+        log.warning('model manager at %s not reachable for %s: %r', MODEL_MANAGER_URL, path, e)
         raise HTTPException(
             status_code=503,
-            detail=f'The model manager is not reachable at {MODEL_MANAGER_URL} ({e.__class__.__name__}). '
-            'Is start_webui.sh running it?',
+            detail='The model service is not reachable. Check your connection and try again in a minute. '
+            'If this continues, ask the admin to check the launcher in Admin Settings > Model Manager.',
         )
 
 

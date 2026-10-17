@@ -58,11 +58,12 @@
 	$: mmBlocked = managerBlock(item.model, $managerState);
 </script>
 
+<!-- fork round 4: variable height lets the pre-send cost wrap on a phone. -->
 <button
 	role="option"
 	aria-selected={isSelected}
-	aria-label={$i18n.t('Select {{modelName}} model', { modelName: item.label })}
-	class="focus-ring group/item flex h-8 w-full cursor-pointer select-none items-center rounded-xl px-2 text-left text-[0.8125rem] font-normal text-gray-700 outline-hidden transition-colors duration-75 dark:text-gray-100 {($settings?.highContrastMode ??
+	aria-label={`${$i18n.t('Select {{modelName}} model', { modelName: item.label })}${mmId && $managerState?.ux?.models?.[mmId] ? `: ${$managerState.ux.models[mmId].primary}` : ''}${mmBlocked ? ` ${mmBlocked}` : ''}`}
+	class="focus-ring group/item flex min-h-8 h-auto py-1 w-full cursor-pointer select-none items-center rounded-xl px-2 text-left text-[0.8125rem] font-normal text-gray-700 outline-hidden transition-colors duration-75 dark:text-gray-100 {($settings?.highContrastMode ??
 	false)
 		? 'hover:bg-gray-200 dark:hover:bg-gray-800'
 		: 'hover:bg-gray-50/40 dark:hover:bg-gray-800/40'} {index === selectedModelIdx &&
@@ -100,6 +101,13 @@
 			</div>
 		{/if} -->
 
+		<!-- fork round 4: readable cost before sending, including disabled choices. Short line
+		     under the name; the full explanation is under the picker once the model is chosen. -->
+		{#if mmId && $managerState?.ux?.models?.[mmId]}
+			<div class="order-last whitespace-normal break-words pl-6 text-[0.6875rem] text-gray-500 dark:text-gray-400">
+				{$managerState.ux.models[mmId].primary}
+			</div>
+		{/if}
 		<div class="flex items-center gap-2 overflow-hidden">
 			<div class="flex items-center min-w-fit">
 				<Tooltip content={$user?.role === 'admin' ? (item?.value ?? '') : ''} placement="top-start">
@@ -127,16 +135,6 @@
 			</div>
 
 			<div class="flex shrink-0 items-center gap-1.5">
-				{#if mmId && $managerState}
-					<!-- fork: local model manager -->
-					{#if $managerState.phase === 'ready' && $managerState.model === mmId}
-						<span class="text-[0.6875rem] text-green-600 dark:text-green-400"
-							>{$managerState.pinned ? 'loaded · pinned' : 'loaded'}</span
-						>
-					{:else if $managerState.phase === 'loading' && $managerState.target === mmId}
-						<span class="text-[0.6875rem] text-amber-600 dark:text-amber-400">loading…</span>
-					{/if}
-				{/if}
 				{#if item.model.owned_by === 'ollama'}
 					{#if (item.model.ollama?.details?.parameter_size ?? '') !== ''}
 						<div class="flex items-center translate-y-[0.5px]">

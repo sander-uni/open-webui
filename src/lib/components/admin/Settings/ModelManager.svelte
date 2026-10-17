@@ -16,6 +16,7 @@
 	import { deleteFunctionById, getFunctionById } from '$lib/apis/functions';
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
+	import OperationPlan from '$lib/components/model-manager/OperationPlan.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
 	import { refreshManagerState, requestModelSelection } from '$lib/components/model-manager/state';
 
@@ -29,12 +30,6 @@
 		default: boolean;
 		hidden: boolean;
 		loaded: boolean;
-	};
-
-	const ENGINE_NAMES: Record<string, string> = {
-		ninfer: 'NInfer',
-		strata: 'Strata',
-		ollama: 'Ollama'
 	};
 
 	let status: any = null;
@@ -71,14 +66,14 @@
 				idleMinutes = status?.settings?.idle_minutes ?? 60;
 			}
 		} catch (error) {
-			unreachable = `${error}`;
+			unreachable = 'The model service is not reachable. Progress cannot be checked. Check the connection, start_webui.sh and logs/modelmgr.log before retrying messages.';
 		} finally {
 			loadingFirst = false;
 		}
 	};
 
 	const poll = async () => {
-		await refresh();
+		if (typeof document === 'undefined' || !document.hidden) await refresh();
 		if (destroyed) return;
 		const fast = status && ['loading', 'unloading'].includes(status.phase);
 		timer = setTimeout(poll, fast ? 1000 : 3000);
@@ -98,13 +93,20 @@
 		}
 	};
 
+	const wake = () => { if (!document.hidden) refresh(); };
 	onMount(async () => {
+		document.addEventListener('visibilitychange', wake);
+		window.addEventListener('online', wake);
+		window.addEventListener('pageshow', wake);
 		await poll();
 		await refreshFilter();
 	});
 
 	onDestroy(() => {
 		destroyed = true;
+		document.removeEventListener('visibilitychange', wake);
+		window.removeEventListener('online', wake);
+		window.removeEventListener('pageshow', wake);
 		if (timer) clearTimeout(timer);
 	});
 
@@ -114,7 +116,7 @@
 			await fn();
 			if (success) toast.success(success);
 		} catch (error) {
-			toast.error(`${error}`);
+			toast.error($i18n.t('The action did not finish. Refresh the status before trying again.'));
 		} finally {
 			busy = false;
 			await refresh();
@@ -145,11 +147,11 @@
 			refreshManagerState();
 		});
 
-	const cancelLoad = () =>
-		run(async () => {
-			await cancelManagedLoad(localStorage.token);
-			refreshManagerState();
-		});
+	const cancelLoad = () => ask(
+		$i18n.t('Cancel loading for everyone?'),
+		status?.ux?.cancel_help ?? '',
+		() => run(async () => { await cancelManagedLoad(localStorage.token); refreshManagerState(); })
+	);
 
 	const unload = () => {
 		if (status?.inflight > 0) {
@@ -163,8 +165,13 @@
 			);
 			return;
 		}
-		run(() => unloadManagedModel(localStorage.token, false));
+		ask($i18n.t('Put this model away?'),
+			`${status?.ux?.models?.[status?.model?.id]?.reload_text ?? 'The next message will need a fresh start, which can take several minutes.'} ${status?.pinned ? 'This also removes its pin.' : ''}`,
+			() => run(() => unloadManagedModel(localStorage.token, false)));
+
 	};
+
+	const dismissError = () => run(() => unloadManagedModel(localStorage.token, false));
 
 	const setPin = (pinned: boolean) => run(() => pinManagedModel(localStorage.token, pinned));
 
@@ -239,7 +246,7 @@
 			case 'ram_not_released':
 				return `${e.engine} did not release its RAM (${gib(e.used_mib)} GiB in use)`;
 			case 'engine_stopped':
-				return `Stopped ${e.engine}${e.released_s !== undefined ? ` (RAM and port released in ${duration(e.released_s)})` : ''}`;
+                return `Stopped ${e.engine}${e.released_s !== undefined ? ` (stop and release checks took ${duration(e.released_s)})` : ''}`;
 			case 'load_failed':
 				return `Loading ${e.model} failed`;
 			case 'unload':
@@ -264,9 +271,6 @@
 	};
 
 	$: models = (status?.models ?? []) as ManagedModel[];
-	$: groups = ['ninfer', 'strata', 'ollama']
-		.filter((engine) => (status?.engines ?? []).includes(engine))
-		.map((engine) => ({ engine, models: models.filter((m) => m.engine === engine) }));
 	$: oldFilterInstalled = !!filterInfo && !!filterFn;
 	$: phaseColor =
 		{
@@ -286,354 +290,99 @@
 	onConfirm={() => confirmAction()}
 />
 
-<div class="flex h-full flex-col text-sm">
-	<h2 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
-		{$i18n.t('Model Manager')}
-	</h2>
-
-	<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hover pr-1.5">
-		{#if loadingFirst}
-			<div class="flex justify-center py-8"><Spinner className="size-6" /></div>
-		{:else if unreachable && !status}
-			<div
-				class="rounded-xl border border-red-200/60 bg-red-50/60 px-3 py-2.5 text-xs text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
-			>
-				{unreachable}
-			</div>
-		{:else if status}
-			{#if unreachable}
-				<div class="mb-3 text-xs text-red-600 dark:text-red-400">{unreachable}</div>
+<!-- Fork addition round 4: all progress/cost copy comes from the manager. -->
+<div class="flex h-full min-w-0 flex-col text-sm">
+	<h2 class="mb-3 font-medium">{$i18n.t('Model Manager')}</h2>
+	<div class="min-h-0 overflow-y-auto space-y-4 break-words">
+		<div role="status" aria-live="polite" aria-atomic="true">
+			{#if loadingFirst}<p>{$i18n.t('Checking the model service…')}</p>{/if}
+			{#if unreachable}<p class="text-red-600">{unreachable}</p>{/if}
+		</div>
+		<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]" on:click={refresh}>{$i18n.t('Refresh status')}</button>
+		{#if status}
+			<div class="rounded-xl border border-gray-100/70 bg-gray-50/50 px-3 py-2.5 dark:border-white/[0.05] dark:bg-white/[0.02] space-y-1">
+			<p class="flex items-center gap-2 font-medium"><span class="size-2 shrink-0 rounded-full {phaseColor}"></span>{status.model?.id ?? status.loading?.model ?? $i18n.t('No model loaded')}</p>
+			<OperationPlan operation={status.ux?.operation?.outcome === 'running' ? status.ux.operation : null}
+				problem={status.ux?.problem} admin={true} technical={[status.loading?.detail, status.loading?.log_tail, status.warning].filter(Boolean).join('\n')} />
+			{#if status.phase === 'ready'}
+				<p>{$i18n.t('Ready to answer')}: {status.model?.id}</p>
+				<p>{status.inflight} {$i18n.t('chat(s) answering now.')}</p>
+				<!-- Round 4 follow-up: when it will put itself away, so the next slow start is no surprise. -->
+				<p>
+					{#if status.pinned}
+						{$i18n.t('Kept ready (pinned): it is not put away automatically.')}
+					{:else if status.inflight > 0 && status.unload_in_s !== null}
+						{$i18n.t('The quiet-period timer starts when the running chats finish.')}
+					{:else if status.unload_in_s !== null && status.unload_in_s !== undefined}
+						{$i18n.t('Puts itself away in {{left}} if nobody uses it.', { left: duration(status.unload_in_s) })}
+					{:else}
+						{$i18n.t('Stays ready until you put it away (quiet minutes is 0).')}
+					{/if}
+				</p>
+				<p>{status.ux?.models?.[status.model?.id]?.reload_text}</p>
+			{:else if status.phase === 'idle'}
+				<p>{$i18n.t('No model is ready yet. Send a message or choose Prepare now below. Large models can take several minutes.')}</p>
+			{:else if status.phase === 'error'}
+				<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]" disabled={busy || !!unreachable} on:click={dismissError}>{$i18n.t('Dismiss error')}</button>
 			{/if}
-
-			<!-- current state -->
-			<div
-				class="rounded-xl border border-gray-100/70 bg-gray-50/50 px-3 py-2.5 dark:border-white/[0.05] dark:bg-white/[0.02]"
-			>
-				<div class="flex items-start justify-between gap-3">
-					<div class="min-w-0">
-						<div class="flex items-center gap-2">
-							<span class="size-2 shrink-0 rounded-full {phaseColor}"></span>
-							<span class="truncate font-medium text-gray-900 dark:text-gray-100">
-								{#if status.phase === 'ready'}
-									{status.model?.id}
-								{:else if status.phase === 'loading'}
-									{$i18n.t('Loading {{model}}', { model: status.loading?.model ?? '' })}
-								{:else if status.phase === 'unloading'}
-									{$i18n.t('Unloading {{model}}', { model: status.loading?.model ?? '' })}
-								{:else if status.phase === 'error'}
-									{$i18n.t('Error')}
-								{:else}
-									{$i18n.t('No model loaded')}
-								{/if}
-							</span>
-							{#if status.phase === 'ready'}
-								<span
-									class="shrink-0 rounded-md bg-gray-200/60 px-1.5 py-0.5 text-[0.625rem] uppercase tracking-wide text-gray-600 dark:bg-white/[0.06] dark:text-gray-400"
-								>
-									{ENGINE_NAMES[status.model?.engine] ?? status.model?.engine}
-								</span>
-							{/if}
-						</div>
-						<div class="mt-1 text-[0.6875rem] text-gray-500 dark:text-gray-400">
-							{#if status.phase === 'ready'}
-								{#if status.inflight > 0}
-									{$i18n.t('{{count}} request(s) running', { count: status.inflight })}
-								{:else if status.pinned}
-									{$i18n.t('Pinned: stays loaded until you unpin or unload it')}
-								{:else if status.settings?.idle_minutes === 0}
-									{$i18n.t('Idle for {{time}}; idle unload is off', {
-										time: duration(status.idle_s)
-									})}
-								{:else}
-									{$i18n.t('Idle for {{idle}}; unloads in {{left}}', {
-										idle: duration(status.idle_s),
-										left: duration(status.unload_in_s)
-									})}
-								{/if}
-								{#if status.served?.ctx}
-									· {$i18n.t('context {{ctx}}', { ctx: status.served.ctx.toLocaleString() })}
-								{/if}
-								{#if status.switch_to}
-									· {$i18n.t('switching to {{model}} when the running requests finish', {
-										model: status.switch_to
-									})}
-								{/if}
-							{:else if status.phase === 'loading' || status.phase === 'unloading'}
-								{status.loading?.detail} · {duration(status.loading?.elapsed_s)}
-							{:else if status.phase === 'error'}
-								<span class="whitespace-pre-wrap text-red-600 dark:text-red-400"
-									>{status.error?.message}</span
-								>
-							{:else}
-								{$i18n.t('Models load when a chat asks for one, or with Load below.')}
-							{/if}
-						</div>
-						{#if (status.phase === 'loading' || status.phase === 'unloading') && status.loading?.log_tail}
-							<div
-								class="mt-1 truncate font-mono text-[0.625rem] text-gray-400 dark:text-gray-500"
-								title={status.loading.log_tail}
-							>
-								{status.loading.log_tail}
-							</div>
-						{/if}
-						{#if status.warning}
-							<div class="mt-1 text-[0.6875rem] text-amber-600 dark:text-amber-400">
-								{status.warning}
-							</div>
-						{/if}
-					</div>
-
-					<div class="flex shrink-0 items-center gap-2">
-						{#if status.phase === 'ready' || status.phase === 'loading'}
-							<label class="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
-								{$i18n.t('Pin')}
-								<Switch state={status.pinned} disabled={busy} on:change={(e) => setPin(e.detail)} />
-							</label>
-						{/if}
-						{#if status.phase === 'loading'}
-							<button
-								class="flex h-7 items-center rounded-lg border border-gray-200/70 px-2.5 text-xs text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-white/[0.08] dark:text-red-400 dark:hover:bg-red-500/10"
-								disabled={busy}
-								on:click={cancelLoad}
-								type="button"
-							>
-								{$i18n.t('Cancel loading')}
-							</button>
-						{/if}
-						{#if status.phase === 'ready' || status.phase === 'error'}
-							<button
-								class="flex h-7 items-center rounded-lg border border-gray-200/70 px-2.5 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]"
-								disabled={busy}
-								on:click={unload}
-								type="button"
-							>
-								{status.phase === 'error' ? $i18n.t('Clear') : $i18n.t('Unload now')}
-							</button>
-						{/if}
-					</div>
-				</div>
-
-				<div
-					class="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 border-t border-gray-100/70 pt-2 text-[0.6875rem] text-gray-500 dark:border-white/[0.05] dark:text-gray-400"
-				>
-					{#if vram}
-						<span class="flex items-center gap-1.5">
-							VRAM
-							<span
-								class="relative h-1.5 w-20 overflow-hidden rounded-full bg-gray-200 dark:bg-white/[0.08]"
-							>
-								<span
-									class="absolute inset-y-0 left-0 rounded-full bg-gray-500 dark:bg-gray-300"
-									style="width: {Math.min(100, (vram.used_mib / vram.total_mib) * 100)}%"
-								></span>
-							</span>
-							{gib(vram.used_mib)} / {gib(vram.total_mib)} GiB · GPU {vram.util_pct}%
-						</span>
-					{/if}
-					{#if ram}
-						<span
-							class="flex items-center gap-1.5"
-							title={ram.source === 'windows'
-								? $i18n.t('Whole PC (Windows), including WSL')
-								: $i18n.t('WSL only: Windows RAM is not available')}
-						>
-							{ram.source === 'windows' ? $i18n.t('RAM (PC)') : $i18n.t('RAM (WSL)')}
-							<span
-								class="relative h-1.5 w-20 overflow-hidden rounded-full bg-gray-200 dark:bg-white/[0.08]"
-							>
-								<span
-									class="absolute inset-y-0 left-0 rounded-full bg-gray-500 dark:bg-gray-300"
-									style="width: {Math.min(100, (ram.used_mib / ram.total_mib) * 100)}%"
-								></span>
-							</span>
-							{gib(ram.used_mib)} / {gib(ram.total_mib)} GiB{#if ram.source === 'windows' && ram.wsl_used_mib !== undefined}{' '}·
-								WSL {gib(ram.wsl_used_mib)} GiB{/if}
-						</span>
-					{/if}
-					<span>
-						{$i18n.t('Miner')}:
-						{#if !status.miner?.enabled}
-							{$i18n.t('not configured')}
-						{:else}
-							{status.miner.state ?? $i18n.t('not running')}{status.miner.hold
-								? ` (${$i18n.t('held')})`
-								: ''}
-						{/if}
-					</span>
-					<span>{$i18n.t('Loads since start')}: {status.loads}</span>
-				</div>
+			{#if status.ux?.operation?.outcome === 'running'}<p>{status.ux.waiting_action}</p>{/if}
 			</div>
-
-			<!-- idle setting -->
-			<form class="mt-4 flex items-end justify-between gap-3" on:submit|preventDefault={saveIdle}>
-				<div>
-					<label class="text-xs text-gray-600 dark:text-gray-400" for="mm-idle">
-						{$i18n.t('Unload after idle')}
-					</label>
-					<div class="mt-1 flex items-center gap-1.5">
-						<input
-							id="mm-idle"
-							type="number"
-							min="0"
-							step="1"
-							bind:value={idleMinutes}
-							on:input={() => (idleDirty = true)}
-							class="h-7 w-20 rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 text-xs text-gray-700 outline-hidden transition-colors focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:focus:border-blue-500"
-						/>
-						<span class="text-[0.6875rem] text-gray-400 dark:text-gray-600">
-							{$i18n.t(
-								'minutes with no request running (0 = never). A pinned model never unloads.'
-							)}
-						</span>
-					</div>
-				</div>
-				<button
-					class="flex h-7 shrink-0 items-center justify-center rounded-lg bg-gray-900 px-2.5 text-xs font-normal text-white transition hover:bg-black disabled:opacity-60 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white"
-					type="submit"
-					disabled={savingIdle || !idleDirty}
-				>
-					{$i18n.t('Save')}
-				</button>
+			<div class="flex flex-wrap items-center gap-3">
+				<label class="flex items-center gap-2">
+					{$i18n.t('Keep this model ready (Pin)')}
+					<Switch state={status.pinned} disabled={busy || !!unreachable || !status.ux?.actions?.can_pin} on:change={(e) => setPin(e.detail)} />
+				</label>
+				<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]"
+					disabled={busy || !!unreachable || !status.ux?.actions?.can_cancel} on:click={cancelLoad}>{$i18n.t('Cancel loading for everyone')}</button>
+				<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]"
+					disabled={busy || !!unreachable || !status.ux?.actions?.can_unload} on:click={unload}>{$i18n.t('Put model away (Unload)')}</button>
+			</div>
+			<p class="text-xs">{$i18n.t('Pin never expires. It prevents automatic unloading and blocks other models until you unpin. Unload puts the model away; messages already answering can be interrupted only after confirmation. Cancel is available only during preparation and affects everyone waiting for that model.')}</p>
+			{#if !status.ux?.actions?.can_unload}<p class="text-xs">{$i18n.t('Unload is unavailable until a model is ready.')}</p>{/if}
+			<form class="space-y-2" on:submit|preventDefault={saveIdle}>
+				<label for="mm-idle">{$i18n.t('Put the model away after this many quiet minutes')}</label>
+				<input id="mm-idle" class="w-24 rounded border p-1" type="number" min="0" max="100000" step="1" bind:value={idleMinutes} on:input={() => (idleDirty = true)} />
+				<button type="submit" disabled={savingIdle || !idleDirty || !!unreachable}>{$i18n.t('Save')}</button>
+				<p class="text-xs">{$i18n.t('0 means never. A pinned model stays ready. The next message after unloading needs a fresh start; its cost is shown below. Shortening this time may put an already quiet model away immediately.')}</p>
 			</form>
-
-			<!-- models -->
-			<div class="mt-5">
-				<div class="mb-1.5 flex items-baseline justify-between">
-					<span class="text-xs font-medium text-gray-700 dark:text-gray-300"
-						>{$i18n.t('Models')}</span
-					>
-					<span class="text-[0.625rem] text-gray-400 dark:text-gray-600">
-						{$i18n.t('Listed = shown in the chat model picker')}
-					</span>
-				</div>
-				{#each groups as group}
-					<div
-						class="mt-2 text-[0.625rem] uppercase tracking-wide text-gray-400 dark:text-gray-500"
-					>
-						{ENGINE_NAMES[group.engine] ?? group.engine}
+			{#each models as model (model.ref)}
+				{@const view = status.ux?.models?.[model.id]}
+				{@const canPrepare = !!view?.can_load || (view?.can_replace_pin ?? (!!view?.blocked && status.phase === 'ready'))}
+				<div class="space-y-1 rounded-xl border border-gray-100/70 bg-gray-50/50 px-3 py-2.5 dark:border-white/[0.05] dark:bg-white/[0.02]">
+					<p class="font-medium break-all">{model.id}</p>
+					<p>{view?.primary}</p><p class="text-xs">{view?.admin_why ?? view?.why}</p>
+					<p class="text-xs">{view?.reload_text}</p>
+					<div class="flex flex-wrap items-center gap-3">
+						<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]" disabled={busy || !!unreachable || !canPrepare} on:click={() => load(model)}>{$i18n.t('Prepare now')}</button>
+						<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]" disabled={busy || !!unreachable || !canPrepare} on:click={() => load(model, true)}>{$i18n.t('Prepare and keep ready')}</button>
+						<label class="flex items-center gap-2">{$i18n.t('Show in model picker')}<Switch state={!model.hidden} disabled={busy || !!unreachable} on:change={(e) => setListed(model, e.detail)} /></label>
 					</div>
-					{#if group.models.length === 0}
-						<div class="py-1 text-[0.6875rem] text-gray-400">{$i18n.t('No models installed')}</div>
-					{/if}
-					{#each group.models as model (model.ref)}
-						{@const isCurrent = status.model?.ref === model.ref}
-						<div
-							class="flex items-center justify-between gap-2 border-b border-gray-100/60 py-1.5 last:border-b-0 dark:border-white/[0.04]"
-						>
-							<div class="min-w-0">
-								<div class="flex items-center gap-1.5">
-									<span
-										class="truncate text-xs {model.hidden
-											? 'text-gray-400 dark:text-gray-600'
-											: 'text-gray-800 dark:text-gray-200'}"
-										title={model.ref}>{model.id}</span
-									>
-									{#if model.loaded}
-										<span
-											class="rounded bg-green-500/15 px-1 text-[0.625rem] text-green-700 dark:text-green-400"
-											>{$i18n.t('loaded')}</span
-										>
-									{:else if isCurrent && status.phase === 'loading'}
-										<span
-											class="rounded bg-amber-400/20 px-1 text-[0.625rem] text-amber-700 dark:text-amber-300"
-											>{$i18n.t('loading')}</span
-										>
-									{/if}
-									{#if model.default}
-										<span class="text-[0.625rem] text-gray-400">{$i18n.t('default')}</span>
-									{/if}
-								</div>
-								{#if model.id !== model.key}
-									<div class="truncate text-[0.625rem] text-gray-400 dark:text-gray-600">
-										{model.key}
-									</div>
-								{/if}
-							</div>
-							<div class="flex shrink-0 items-center gap-2">
-								{#if !model.loaded && !(isCurrent && status.phase === 'loading')}
-									<button
-										class="h-6 rounded-md px-2 text-[0.6875rem] text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-white/[0.06]"
-										disabled={busy || status.phase === 'loading' || status.phase === 'unloading'}
-										on:click={() => load(model)}
-										type="button">{$i18n.t('Load')}</button
-									>
-									<button
-										class="h-6 rounded-md px-2 text-[0.6875rem] text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-white/[0.06]"
-										disabled={busy || status.phase === 'loading' || status.phase === 'unloading'}
-										on:click={() => load(model, true)}
-										type="button">{$i18n.t('Load & pin')}</button
-									>
-								{:else if model.loaded}
-									<button
-										class="h-6 rounded-md px-2 text-[0.6875rem] text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-500/10"
-										disabled={busy}
-										on:click={unload}
-										type="button">{$i18n.t('Unload')}</button
-									>
-								{/if}
-								<label
-									class="flex items-center gap-1 text-[0.625rem] text-gray-400"
-									title={$i18n.t('Show in the chat model picker')}
-								>
-									{$i18n.t('Listed')}
-									<Switch
-										state={!model.hidden}
-										disabled={busy}
-										on:change={(e) => setListed(model, e.detail)}
-									/>
-								</label>
-							</div>
-						</div>
-					{/each}
-				{/each}
-			</div>
-
-			<!-- old loading-status filter (retired) -->
+				</div>
+			{/each}
+			<p class="text-xs">{$i18n.t('Hiding only removes a model from the picker. It does not stop it or block existing chats. Prepare now may switch away from the current model; running replies finish first.')}</p>
 			{#if oldFilterInstalled}
-				<div
-					class="mt-5 flex items-center justify-between gap-3 rounded-xl border border-amber-200/60 bg-amber-50/50 px-3 py-2.5 dark:border-amber-500/20 dark:bg-amber-500/5"
-				>
-					<div class="min-w-0">
-						<div class="text-xs font-medium text-gray-700 dark:text-gray-300">
-							{$i18n.t('Old loading-status filter installed')}
-						</div>
-						<div class="text-[0.6875rem] text-gray-500 dark:text-gray-400">
-							{$i18n.t(
-								'Replies now show loading status themselves. The old filter loaded models through a separate request, which could let another chat swap the model out, so remove it.'
-							)}
-						</div>
-					</div>
-					<button
-						class="flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-gray-900 px-2.5 text-xs text-white transition hover:bg-black disabled:opacity-60 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white"
-						disabled={filterBusy}
-						on:click={removeFilter}
-						type="button"
-					>
-						{#if filterBusy}<Spinner className="size-3" />{/if}
-						{$i18n.t('Remove')}
-					</button>
-				</div>
+				<p>{$i18n.t('The old loading-status filter is installed. Remove it; replies now show preparation steps themselves.')}</p>
+				<button class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]" disabled={filterBusy} type="button" on:click={removeFilter}>{$i18n.t('Remove old filter')}</button>
 			{/if}
-
-			<!-- recent events -->
-			{#if status.events?.length}
-				<div class="mt-5">
-					<div class="mb-1 text-xs font-medium text-gray-700 dark:text-gray-300">
-						{$i18n.t('Recent activity')}
-					</div>
-					{#each [...status.events].reverse().slice(0, 10) as e}
-						<div class="flex gap-2 py-0.5 text-[0.6875rem]">
-							<span class="shrink-0 tabular-nums text-gray-400">{time(e.ts)}</span>
-							<span
-								class="min-w-0 truncate {e.event === 'load_failed' || e.event === 'engine_exit'
-									? 'text-red-600 dark:text-red-400'
-									: 'text-gray-600 dark:text-gray-400'}"
-								title={e.error ?? ''}>{eventText(e)}</span
-							>
-						</div>
-					{/each}
-				</div>
-			{/if}
+			<details>
+				<summary>{$i18n.t('Technical details and recent activity')}</summary>
+				<p>{status.ux?.history_warning ?? ''}</p>
+				{#if vram}<p>VRAM {gib(vram.used_mib)} / {gib(vram.total_mib)} GiB</p>{/if}
+				{#if ram}<p>RAM {gib(ram.used_mib)} / {gib(ram.total_mib)} GiB ({ram.source})</p>{/if}
+				<p>Background GPU job: {status.miner?.state ?? 'not configured'}</p>
+				<p>{status.warning ?? ''}</p>
+				<!-- Fork round 5: retain the diagnostics available on the 0.2.3 page. -->
+				<p>Engine: {status.model?.engine ?? 'none'} · Replies served as: {status.served?.name ?? 'none'} · Context: {status.served?.ctx ?? 'unknown'} · Loads since start: {status.loads}</p>
+				{#if vram}<p>Graphics card use: {vram.util_pct ?? 'unknown'}%</p>{/if}
+				{#if ram?.wsl_used_mib !== undefined}<p>WSL memory: {gib(ram.wsl_used_mib)} GiB</p>{/if}
+				<p>Miner configured: {status.miner?.enabled ? 'yes' : 'no'} · Hold requested: {status.miner?.hold ? 'yes' : 'no'}</p>
+				{#each models as model (model.ref)}
+					<p>{model.ref} · Program model name: {model.key}{model.default ? ' · default' : ''}</p>
+				{/each}
+				{#each [...(status.events ?? [])].reverse().slice(0, 10) as e}
+					<details><summary>{time(e.ts)} {eventText(e)}</summary><pre class="whitespace-pre-wrap break-all">{JSON.stringify(e, null, 2)}</pre></details>
+				{/each}
+			</details>
 		{/if}
 	</div>
 </div>
