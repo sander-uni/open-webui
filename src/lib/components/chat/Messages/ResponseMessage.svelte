@@ -269,6 +269,10 @@
 		if ($config.audio.tts.engine === '') {
 			let voices = [];
 			const getVoicesLoop = setInterval(() => {
+				if (signal.aborted) { // fork: Stop also cancels voice discovery
+					clearInterval(getVoicesLoop);
+					return;
+				}
 				voices = speechSynthesis.getVoices();
 				if (voices.length > 0) {
 					clearInterval(getVoicesLoop);
@@ -281,10 +285,14 @@
 					releaseSpeechSession = releaseThisSpeech;
 					speech.onerror = () => {
 						releaseThisSpeech(); // fork
+						if (releaseSpeechSession !== releaseThisSpeech) return;
+						releaseSpeechSession = null;
 						speaking = false;
 					};
 					speech.onend = () => {
 						releaseThisSpeech(); // fork
+						if (releaseSpeechSession !== releaseThisSpeech) return;
+						releaseSpeechSession = null;
 						speaking = false;
 						if ($settings.conversationMode) {
 							document.getElementById('voice-input-button')?.click();
@@ -298,6 +306,7 @@
 					speechSynthesis.speak(speech);
 				}
 			}, 100);
+			signal.addEventListener('abort', () => clearInterval(getVoicesLoop), { once: true }); // fork
 		} else {
 			$audioQueue.setId(`${message.id}`);
 			$audioQueue.setPlaybackRate($settings.audio?.tts?.playbackRate ?? 1);
@@ -667,6 +676,9 @@
 	});
 
 	onDestroy(() => {
+		// fork: no voice-discovery callback or native speech claim outlives this reply.
+		speakAbort?.abort();
+		if (releaseSpeechSession) stopAudio();
 		if (buttonsContainerElement) {
 			buttonsContainerElement.removeEventListener('wheel', buttonsWheelHandler);
 		}
