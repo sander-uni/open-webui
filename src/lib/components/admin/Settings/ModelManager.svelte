@@ -237,7 +237,19 @@
 			)
 		);
 
+	// Open WebUI only stores settings for ids without whitespace (ModelForm id pattern). For any
+	// other id (an NInfer file name with a space, say) the manager's own list still hides it.
+	const storable = (id: string) => !/\s/.test(id);
+
 	const writeHidden = async (id: string, hidden: boolean) => {
+		if (!storable(id)) {
+			const list = new Set<string>(status?.settings?.hidden ?? []);
+			if (hidden) list.add(id);
+			else list.delete(id);
+			await saveModelManagerSettings(localStorage.token, { hidden: [...list] });
+			await refresh();
+			return;
+		}
 		const saved = await getModelById(localStorage.token, id).catch(() => null);
 		if (saved?.id) {
 			// No access_grants in the update: who may use the model stays as it is.
@@ -278,21 +290,40 @@
 		}
 	};
 
-	// One-time move of models hidden through the manager (0.3.1) to Open WebUI's flag.
+	// One-time move of models hidden through the manager (0.3.1) to Open WebUI's flag. Each id
+	// on its own: one that can't be moved stays hidden the old way and doesn't stop the rest.
 	let moving = false;
+	let moveTried = new Set<string>();
 	const moveHiddenToOpenWebUI = async () => {
-		const ids: string[] = status?.settings?.hidden ?? [];
+		const ids: string[] = (status?.settings?.hidden ?? []).filter(
+			(id: string) => storable(id) && !moveTried.has(id)
+		);
 		if (moving || !ids.length) return;
 		moving = true;
+		const moved: string[] = [];
+		const failed: string[] = [];
 		try {
-			for (const id of ids) await writeHidden(id, true);
-			await saveModelManagerSettings(localStorage.token, { hidden: [] });
-			await refreshModels();
-			toast.success(
-				$i18n.t(
-					'Hidden models now use Open WebUI\'s own hide setting: still out of the picker, but they keep answering.'
-				)
-			);
+			for (const id of ids) {
+				moveTried.add(id);
+				try {
+					await writeHidden(id, true);
+					moved.push(id);
+				} catch (error) {
+					failed.push(`${id}: ${error}`);
+				}
+			}
+			if (moved.length) {
+				const keep = (status?.settings?.hidden ?? []).filter((id: string) => !moved.includes(id));
+				await saveModelManagerSettings(localStorage.token, { hidden: keep });
+				await refreshModels();
+				toast.success(
+					$i18n.t(
+						'{{count}} hidden model(s) now use Open WebUI\'s own hide setting: still out of the picker, but they keep answering.',
+						{ count: moved.length }
+					)
+				);
+			}
+			if (failed.length) toast.error(`Could not move: ${failed.join('; ')}`);
 		} catch (error) {
 			toast.error(`${error}`);
 		} finally {
