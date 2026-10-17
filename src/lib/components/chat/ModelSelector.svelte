@@ -3,7 +3,6 @@
 	import { getContext } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Selector from './ModelSelector/Selector.svelte';
-	import ModelLoadStatus from '$lib/components/model-manager/ModelLoadStatus.svelte'; // fork
 	import { managedId, managerState, modelSelectRequest } from '$lib/components/model-manager/state'; // fork
 
 	import { updateUserSettings } from '$lib/apis/users';
@@ -105,6 +104,4 @@
 			</div>
 		</div>
 	</div>
-	<!-- fork: local model manager status for the picked model -->
-	<ModelLoadStatus modelId={selectedModels[0] ?? ''} />
 </div>
