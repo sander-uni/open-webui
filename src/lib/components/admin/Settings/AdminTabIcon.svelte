@@ -51,6 +51,8 @@
 			d="M4 11.5v4C4 17.43 7.58 19 12 19s8-1.57 8-3.5v-4"
 		/>
 	</svg>
+{:else if id === 'model-manager'}
+	<Computer {className} {strokeWidth} />
 {:else if id === 'subagents'}
 	<UserCircle {className} {strokeWidth} />
 {:else if id === 'evaluations'}

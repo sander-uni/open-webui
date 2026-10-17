@@ -52,6 +52,7 @@
 	import TagSelector from '$lib/components/workspace/common/TagSelector.svelte';
 
 	import ModelItem from './ModelItem.svelte';
+	import { managedId, managerBlock, managerState } from '$lib/components/model-manager/state'; // fork
 
 	const i18n: any = getContext('i18n');
 	const dispatch = createEventDispatcher();
@@ -384,7 +385,8 @@
 		}
 
 		// Set the virtual scroll position so the selected item is rendered and centered
-		const targetScrollTop = Math.max(0, selectedModelIdx * ITEM_HEIGHT - 128 + ITEM_HEIGHT / 2);
+		// fork round 4: cost rows wrap; center the rendered DOM node below.
+		const targetScrollTop = managerCostRows ? 0 : Math.max(0, selectedModelIdx * ITEM_HEIGHT - 128 + ITEM_HEIGHT / 2);
 		listScrollTop = targetScrollTop;
 
 		await tick();
@@ -408,6 +410,12 @@
 	};
 
 	const selectItem = (item, index: number) => {
+		// fork: the local model manager is loading or has another model pinned
+		const blocked = managerBlock(item?.model);
+		if (blocked) {
+			toast.info(blocked);
+			return;
+		}
 		selectedModelIdx = index;
 
 		if (values) {
@@ -865,8 +873,11 @@
 		};
 	};
 
-	$: visibleStart = Math.max(0, Math.floor(listScrollTop / ITEM_HEIGHT) - OVERSCAN);
-	$: visibleEnd = Math.min(
+	// fork round 4: fixed 32px virtualization cannot position wrapping cost rows.
+	// The small managed-model list renders fully; other lists keep upstream virtualization.
+	$: managerCostRows = !!$managerState?.ux && filteredItems.some((item) => !!managedId(item.model, $managerState));
+	$: visibleStart = managerCostRows ? 0 : Math.max(0, Math.floor(listScrollTop / ITEM_HEIGHT) - OVERSCAN);
+	$: visibleEnd = managerCostRows ? filteredItems.length : Math.min(
 		filteredItems.length,
 		Math.ceil((listScrollTop + listViewportHeight) / ITEM_HEIGHT) + OVERSCAN
 	);

@@ -81,6 +81,7 @@
 	import InputMenu from './MessageInput/InputMenu.svelte';
 	import VoiceRecording from './MessageInput/VoiceRecording.svelte';
 	import ModelSelector from './ModelSelector.svelte';
+	import ModelLoadStatus from '$lib/components/model-manager/ModelLoadStatus.svelte'; // fork
 	import ModelControls from './MessageInput/ModelControls.svelte';
 
 	import ToolServersModal from './ToolServersModal.svelte';
@@ -2266,6 +2267,11 @@
 										{/key}
 									{/if}
 								</div>
+							</div>
+
+							<!-- fork: model manager status, own full-width row (the picker sits in the toolbar since 0.12) -->
+							<div class="px-3.5 min-w-0 max-w-full" dir="ltr">
+								<ModelLoadStatus modelId={selectedModelIds[0] ?? ''} />
 							</div>
 
 							<div class=" flex justify-between mt-0.5 mb-2 mx-0.5 max-w-full" dir="ltr">

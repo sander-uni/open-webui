@@ -49,6 +49,7 @@
 	import AdminConnections from '$lib/components/admin/Settings/Connections.svelte';
 	import AdminModels from '$lib/components/admin/Settings/Models.svelte';
 	import AdminSubagents from '$lib/components/admin/Settings/Subagents.svelte';
+	import AdminModelManager from '$lib/components/admin/Settings/ModelManager.svelte'; // fork
 	import AdminEvaluations from '$lib/components/admin/Settings/Evaluations.svelte';
 	import AdminAnalytics from '$lib/components/admin/Analytics.svelte';
 	import AdminIntegrations from '$lib/components/admin/Settings/Integrations.svelte';
@@ -162,6 +163,7 @@
 		'admin:connections': $i18n.t('AI'),
 		'admin:models': $i18n.t('AI'),
 		'admin:subagents': $i18n.t('AI'),
+		'admin:model-manager': $i18n.t('AI'), // fork
 		'admin:integrations': $i18n.t('Tools'),
 		'admin:documents': $i18n.t('Tools'),
 		'admin:audio': $i18n.t('Tools'),
@@ -301,6 +303,13 @@
 			titleKey: 'settings.admin.subagents.title',
 			title: $i18n.t('settings.admin.subagents.title'),
 			searchPrefixes: ['settings.admin.subagents.']
+		},
+		// fork: local model manager
+		{
+			id: 'admin:model-manager',
+			titleKey: 'Model Manager',
+			title: $i18n.t('Model Manager'),
+			searchPrefixes: []
 		},
 		{
 			id: 'admin:integrations',
@@ -865,6 +874,8 @@
 				<AdminModels bind:tabState />
 			{:else if selectedTab === 'admin:subagents'}
 				<AdminSubagents />
+			{:else if selectedTab === 'admin:model-manager'}
+				<AdminModelManager />
 			{:else if selectedTab === 'admin:evaluations'}
 				<AdminEvaluations />
 			{:else if selectedTab === 'admin:analytics'}

@@ -1,4 +1,5 @@
 <script>
+	import { setAudioSession } from '$lib/utils/audioSession'; // fork
 	import { io } from 'socket.io-client';
 	import { spring } from 'svelte/motion';
 	import { createPyodideWorker } from '$lib/pyodide/createPyodideWorker';
@@ -1118,6 +1119,7 @@
 	};
 
 	onMount(async () => {
+		setAudioSession('ambient'); // fork: don't pause other apps' audio on iOS
 		const originalFetch = window.fetch.bind(window);
 		window.fetch = async (input, init) => {
 			const response = await originalFetch(input, init);
