@@ -23,6 +23,8 @@ export const getModelManagerStatus = (token: string) => call(token, 'GET', '/sta
 export const loadManagedModel = (token: string, model: string, pin = false, force = false) =>
 	call(token, 'POST', '/load', { model, pin, force });
 
+export const cancelManagedLoad = (token: string) => call(token, 'POST', '/cancel', {});
+
 export const unloadManagedModel = (token: string, force = false) =>
 	call(token, 'POST', '/unload', { force });
 

@@ -9,6 +9,7 @@ export type ManagerState = {
 	model: string | null; // loaded and ready
 	target: string | null; // being loaded or unloaded
 	detail: string | null;
+	log_tail: string | null; // last line of the engine's log while loading or unloading
 	elapsed_s: number | null;
 	pinned: boolean;
 	switch_to: string | null;
@@ -64,6 +65,10 @@ export const managerState = writable<ManagerState | null>(null, (set) => {
 });
 
 export const refreshManagerState = () => refreshNow();
+
+/** Ask the chat model picker to switch to this model id (after a load from the Model Manager). */
+export const modelSelectRequest = writable<{ id: string; at: number } | null>(null);
+export const requestModelSelection = (id: string) => modelSelectRequest.set({ id, at: Date.now() });
 
 /** The manager's id for an Open WebUI model (its own id, its base model, or behind a prefix). */
 export const managedId = (model: any, state: ManagerState | null = get(managerState)) => {

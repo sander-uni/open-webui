@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { setAudioSession } from '$lib/utils/audioSession'; // fork
 	import { config, models, settings, showCallOverlay, TTSWorker } from '$lib/stores';
 	import { onMount, tick, getContext, onDestroy, createEventDispatcher } from 'svelte';
 
@@ -726,6 +727,7 @@
 	};
 
 	onMount(async () => {
+		setAudioSession('auto'); // fork: a call needs the audio session
 		if (bridge) {
 			document.addEventListener('keydown', handleKeydown);
 			return;
@@ -805,6 +807,7 @@
 	});
 
 	onDestroy(async () => {
+		setAudioSession('ambient'); // fork
 		if (bridge) {
 			document.removeEventListener('keydown', handleKeydown);
 			return;

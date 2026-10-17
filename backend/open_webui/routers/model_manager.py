@@ -62,6 +62,11 @@ async def load_model(request: Request, user=Depends(get_admin_user)):
     return await _call('POST', '/mm/load', await request.json())
 
 
+@router.post('/cancel')
+async def cancel_load(user=Depends(get_admin_user)):
+    return await _call('POST', '/mm/cancel', {})
+
+
 @router.post('/unload')
 async def unload_model(request: Request, user=Depends(get_admin_user)):
     return await _call('POST', '/mm/unload', await request.json())

@@ -64,6 +64,7 @@
 	import { flyAndScale } from '$lib/utils/transitions';
 	import RegenerateMenu from './ResponseMessage/RegenerateMenu.svelte';
 	import StatusHistory from './ResponseMessage/StatusHistory.svelte';
+	import ModelLoadStatus from '$lib/components/model-manager/ModelLoadStatus.svelte'; // fork
 	import FullHeightIframe from '$lib/components/common/FullHeightIframe.svelte';
 	import OutputEditView from './OutputEditView.svelte';
 	import { getOutputText, replaceOutputMessageText, type OutputItem } from './structuredOutput';
@@ -703,6 +704,10 @@
 					<div>
 						{#if model?.info?.meta?.capabilities?.status_updates ?? true}
 							<StatusHistory statusHistory={message?.statusHistory} />
+						{/if}
+						{#if !message?.done && !(message?.content ?? '').trim()}
+							<!-- fork: the local model manager is loading this reply's model -->
+							<ModelLoadStatus modelId={message?.model ?? ''} inline />
 						{/if}
 
 						{#if message?.files && message.files?.filter( (f) => ['image', 'file'].includes(f.type) ).length > 0}

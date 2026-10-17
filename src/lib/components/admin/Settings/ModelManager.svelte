@@ -5,6 +5,7 @@
 	import { toast } from 'svelte-sonner';
 
 	import {
+		cancelManagedLoad,
 		getModelManagerFilter,
 		getModelManagerStatus,
 		loadManagedModel,
@@ -22,6 +23,7 @@
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
+	import { refreshManagerState, requestModelSelection } from '$lib/components/model-manager/state';
 
 	const i18n = getContext('i18n');
 
@@ -134,12 +136,26 @@
 					pinned: current.id,
 					model: model.id
 				}),
-				() => run(() => loadManagedModel(localStorage.token, model.id, pin, true))
+				() => startLoad(model, pin, true)
 			);
 			return;
 		}
-		run(() => loadManagedModel(localStorage.token, model.id, pin, false));
+		startLoad(model, pin, false);
 	};
+
+	// The chat's model picker switches to the model being loaded here.
+	const startLoad = (model: ManagedModel, pin: boolean, force: boolean) =>
+		run(async () => {
+			await loadManagedModel(localStorage.token, model.id, pin, force);
+			requestModelSelection(model.id);
+			refreshManagerState();
+		});
+
+	const cancelLoad = () =>
+		run(async () => {
+			await cancelManagedLoad(localStorage.token);
+			refreshManagerState();
+		});
 
 	const unload = () => {
 		if (status?.inflight > 0) {
@@ -236,6 +252,12 @@
 				return `Loaded ${e.model} (${e.engine}) in ${duration(e.seconds)}`;
 			case 'load_start':
 				return `Loading ${e.model}${e.replacing ? ` (replacing ${e.replacing})` : ''}`;
+			case 'load_cancelled':
+				return `Cancelled loading ${e.model}`;
+			case 'ram_not_released':
+				return `${e.engine} did not release its RAM (${gib(e.used_mib)} GiB in use)`;
+			case 'engine_stopped':
+				return `Stopped ${e.engine}${e.released_s !== undefined ? ` (RAM and port released in ${duration(e.released_s)})` : ''}`;
 			case 'load_failed':
 				return `Loading ${e.model} failed`;
 			case 'unload':
@@ -393,6 +415,16 @@
 								{$i18n.t('Pin')}
 								<Switch state={status.pinned} disabled={busy} on:change={(e) => setPin(e.detail)} />
 							</label>
+						{/if}
+						{#if status.phase === 'loading'}
+							<button
+								class="flex h-7 items-center rounded-lg border border-gray-200/70 px-2.5 text-xs text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-white/[0.08] dark:text-red-400 dark:hover:bg-red-500/10"
+								disabled={busy}
+								on:click={cancelLoad}
+								type="button"
+							>
+								{$i18n.t('Cancel loading')}
+							</button>
 						{/if}
 						{#if status.phase === 'ready' || status.phase === 'error'}
 							<button

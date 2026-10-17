@@ -1,3 +1,5 @@
+import { setAudioSession } from './audioSession'; // fork
+
 type AudioQueueEvent = 'stop' | 'empty-queue' | 'id-change' | 'error';
 
 interface AudioQueueStopDetail {
@@ -79,6 +81,7 @@ export class AudioQueue {
 
 		if (this.current) {
 			const url = this.current;
+			setAudioSession('auto'); // fork: real speech, take the audio session
 			this.audio.src = url;
 			this.audio.muted = false;
 			this.audio.play().catch((error) => {
@@ -116,6 +119,7 @@ export class AudioQueue {
 	 * Callers that need the callback should invoke it themselves.
 	 */
 	#halt() {
+		setAudioSession('ambient'); // fork: idle again, let other apps' audio play
 		this.audio.pause();
 		this.audio.currentTime = 0;
 		this.audio.removeAttribute('src');
