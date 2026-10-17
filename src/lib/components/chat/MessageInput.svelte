@@ -83,6 +83,8 @@
 	import ModelSelector from './ModelSelector.svelte';
 	import ModelLoadStatus from '$lib/components/model-manager/ModelLoadStatus.svelte'; // fork
 	import ModelStats from '$lib/components/model-manager/ModelStats.svelte'; // fork
+	import PendingInterjections from '$lib/components/interjections/PendingInterjections.svelte'; // fork 0.3.3
+	import { acceptsInterjections, isDirectAttachment } from '$lib/components/interjections/state'; // fork 0.3.3
 	import ModelControls from './MessageInput/ModelControls.svelte';
 
 	import ToolServersModal from './ToolServersModal.svelte';
@@ -941,9 +943,20 @@
 			return null;
 		}
 
-		const filesystemUploadTerminal = getFilesystemUploadTerminal();
+		let filesystemUploadTerminal = getFilesystemUploadTerminal();
+		// fork 0.3.3: during an agent reply, images and text files go to the model directly
+		// (not to the terminal), as part of the message for its next step.
+		const interjectDirect =
+			isActive &&
+			isDirectAttachment(file) &&
+			(await acceptsInterjections(chatId, history?.currentId ?? ''));
+		if (interjectDirect) filesystemUploadTerminal = null;
 
-		if (!filesystemUploadTerminal && fileUploadCapableModels.length !== selectedModelIds.length) {
+		if (
+			!filesystemUploadTerminal &&
+			!interjectDirect &&
+			fileUploadCapableModels.length !== selectedModelIds.length
+		) {
 			toast.error($i18n.t('Model(s) do not support file upload'));
 			return null;
 		}
@@ -1843,6 +1856,14 @@
 						{/if}
 
 						<!-- Queued messages display -->
+						<!-- fork 0.3.3: messages waiting for the agent's next step -->
+						<PendingInterjections
+							{chatId}
+							onRestore={(text, restored) => {
+								if (text) setText(prompt?.trim() ? `${prompt}\n\n${text}` : text);
+								if (restored.length) files = [...files, ...restored];
+							}}
+						/>
 						{#if messageQueue.length > 0}
 							<div
 								class="mb-1 mx-2 py-0.5 px-1.5 rounded-2xl bg-white dark:bg-gray-900/60 border border-gray-100 dark:border-gray-800/50 overflow-x-hidden overflow-y-auto max-h-[25vh]"

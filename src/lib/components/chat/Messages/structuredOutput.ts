@@ -64,6 +64,13 @@ export type OutputDisplayItem =
 			type: 'file';
 			id: string;
 			item: Record<string, unknown>;
+	  }
+	| {
+			// fork 0.3.3: messages the user sent while the agent worked, where they were delivered
+			type: 'interjection';
+			id: string;
+			entries: { id: string; text: string; files?: any[] }[];
+			held: boolean;
 	  };
 
 type ResponseStreamEvent = {
@@ -139,7 +146,8 @@ function getReasoningText(item: OutputItem): string {
 
 function getToolResultText(item?: OutputItem): string {
 	return (item?.output ?? [])
-		.filter((part) => part?.type !== 'input_image')
+		// fork 0.3.3: the user's message is shown on its own, not inside the tool result
+		.filter((part) => part?.type !== 'input_image' && !(part as any)?.interjection)
 		.map((part) => {
 			if (part?.text === undefined || part?.text === null) {
 				return '';
@@ -218,7 +226,9 @@ function buildToolCallToken(item: OutputItem, toolOutputByCallId: Record<string,
 	return {
 		summary: isPending
 			? 'Tool Approval Needed'
-			: isDone
+			: (resultItem as any)?.held // fork 0.3.3
+				? 'Not run: waited for your message'
+				: isDone
 				? 'Tool Executed'
 				: isExecuting
 					? 'Executing...'
@@ -388,6 +398,16 @@ export function buildOutputDisplayItems(output: OutputItem[] = []): OutputDispla
 					type: 'file',
 					id: item.id ?? `file-${index}`,
 					item: inlineFile
+				});
+			}
+			const interjections = (item as any).interjections; // fork 0.3.3
+			if (Array.isArray(interjections) && interjections.length) {
+				flushDetails();
+				displayItems.push({
+					type: 'interjection',
+					id: `interjection-${item.id ?? index}`,
+					entries: interjections,
+					held: !!(item as any).held
 				});
 			}
 			return;

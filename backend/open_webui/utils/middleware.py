@@ -104,6 +104,7 @@ from open_webui.utils.filter import (
 )
 from open_webui.utils.json_codec import JSONCodec
 from open_webui.utils.memory import add_memory_context, review_memory_after_turn
+from open_webui.utils import interjections  # fork 0.3.3: messages sent during an agent reply
 from open_webui.utils.misc import (
     add_or_update_system_message,
     add_or_update_user_message,
@@ -4795,6 +4796,7 @@ async def streaming_chat_response_handler(response, ctx):
             )
 
             tool_calls = []
+            interjection_run = None  # fork 0.3.3
 
             last_assistant_message = None
             try:
@@ -5909,6 +5911,11 @@ async def streaming_chat_response_handler(response, ctx):
                             tool_calls.append(_split_tool_calls(responses_api_tool_calls))
 
                 output_start = len(prior_output)
+                # fork 0.3.3: a reply that offers tools takes the user's interjections
+                if form_data.get('tools'):
+                    interjection_run = interjections.start(
+                        metadata.get('chat_id'), metadata.get('message_id'), user.id
+                    )
                 try:
                     await stream_body_handler(response, form_data)
                 finally:
@@ -6021,9 +6028,24 @@ async def streaming_chat_response_handler(response, ctx):
                                 }
                             )
 
+                    # fork 0.3.3: a message the user sent during this thought holds these calls
+                    held_results = {}
+                    held = interjections.take(interjection_run) if response_tool_calls else []
+                    if held:
+                        block = await interjections.build(request, held, metadata, user)
+                        for n, tc in enumerate(response_tool_calls):
+                            last = n == len(response_tool_calls) - 1
+                            held_results[tc.get('id', '')] = {
+                                'tool_call_id': tc.get('id', ''),
+                                'content': interjections.HELD_NOTE if last else interjections.HELD_NOTE_OTHER,
+                                'held': True,
+                                **({'interjection': block} if last else {}),
+                            }
+
                     tool_approval_mode = metadata.get('params', {}).get('tool_approval_mode', 'full')
                     if (
                         response_tool_calls
+                        and not held_results
                         and tool_approval_mode == 'ask'
                         and is_saved_chat_id(metadata.get('chat_id'))
                         and metadata.get('message_id')
@@ -6053,10 +6075,14 @@ async def streaming_chat_response_handler(response, ctx):
                         tool_call
                         for tool_call in response_tool_calls
                         if tool_call.get('function', {}).get('name') == 'delegate_task'
+                        and tool_call.get('id', '') not in held_results  # fork 0.3.3
                     ]
                     tool_results = {}
                     for tool_call in response_tool_calls:
-                        if tool_call.get('function', {}).get('name') != 'delegate_task':
+                        if (
+                            tool_call.get('function', {}).get('name') != 'delegate_task'
+                            and tool_call.get('id', '') not in held_results  # fork 0.3.3
+                        ):
                             tool_results[id(tool_call)] = await execute_tool_call(
                                 form_data, metadata, event_caller, tool_call
                             )
@@ -6075,6 +6101,9 @@ async def streaming_chat_response_handler(response, ctx):
                     for tool_call in response_tool_calls:
                         tool_call_id = tool_call.get('id', '')
                         tool_function_name = tool_call.get('function', {}).get('name', '')
+                        if tool_call_id in held_results:  # fork 0.3.3: held, not run
+                            results.append(held_results[tool_call_id])
+                            continue
                         tool_function_params, tool_result, tool, tool_type, direct_tool = tool_results[id(tool_call)]
                         if tool_result is None:
                             results.append(
@@ -6148,6 +6177,12 @@ async def streaming_chat_response_handler(response, ctx):
                             }
                         )
 
+                    # fork 0.3.3: a message sent while the tools ran goes with the last result
+                    if not held_results and results:
+                        late = interjections.take(interjection_run)
+                        if late:
+                            results[-1]['interjection'] = await interjections.build(request, late, metadata, user)
+
                     result_status_by_call_id = {}
                     for result in results:
                         output_parts = [{'type': 'input_text', 'text': result.get('content', '')}]
@@ -6168,6 +6203,17 @@ async def streaming_chat_response_handler(response, ctx):
                                 if file_item.get('type') == 'image' and file_item.get('url'):
                                     output_parts.append({'type': 'input_image', 'image_url': file_item['url']})
 
+                        # fork 0.3.3: the user's message, after the tool result, between markers
+                        interjection = result.get('interjection')
+                        if interjection:
+                            output_parts.append(
+                                {'type': 'input_text', 'text': '\n\n' + interjection['text'], 'interjection': True}
+                            )
+                            output_parts.extend(
+                                {'type': 'input_image', 'image_url': url, 'interjection': True}
+                                for url in interjection['images']
+                            )
+
                         output.append(
                             {
                                 'type': 'function_call_output',
@@ -6177,6 +6223,8 @@ async def streaming_chat_response_handler(response, ctx):
                                 'status': local_output_status,
                                 **({'files': display_files} if display_files else {}),
                                 **({'embeds': result.get('embeds')} if result.get('embeds') else {}),
+                                **({'interjections': interjection['display']} if interjection else {}),
+                                **({'held': True} if result.get('held') else {}),
                             }
                         )
 
@@ -6597,6 +6645,9 @@ async def streaming_chat_response_handler(response, ctx):
                             await emit_message_error(error_content)
                             break
 
+                # fork 0.3.3: no next step; messages still waiting are not delivered
+                interjections.close(interjection_run)
+
                 # Mark all in-progress items as completed
                 for item in [*prior_output, *output]:
                     if item.get('status') == 'in_progress':
@@ -6698,6 +6749,8 @@ async def streaming_chat_response_handler(response, ctx):
                 except (asyncio.CancelledError, Exception):
                     pass
                 raise  # re-raise CancelledError for proper propagation
+            finally:
+                interjections.finish(interjection_run)  # fork 0.3.3
 
             if response.background is not None:
                 await response.background()

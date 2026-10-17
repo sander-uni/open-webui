@@ -231,7 +231,7 @@
 		owuiModels.set(
 			await getModels(
 				localStorage.token,
-				get(config)?.features?.enable_direct_connections && (get(settings)?.directConnections ?? null),
+				(get(config)?.features?.enable_direct_connections && (get(settings)?.directConnections ?? null)) || null,
 				false,
 				true
 			)
@@ -510,16 +510,17 @@
 						</summary>
 						<ul class="mt-1 space-y-1.5">
 							{#each versions as v (v.id)}
-								<li class="flex items-center justify-between gap-3">
-									<span class="min-w-0 break-all">
-										{v.name}{#if v.original}<span class="text-gray-500">&nbsp;· {$i18n.t('original')}</span>{/if}
-										{#if v.name !== v.id}<span class="block text-[0.6875rem] text-gray-500">{v.id}</span>{/if}
-									</span>
+								<!-- 0.3.3: the switch first, before the name -->
+								<li class="flex items-center gap-3">
 									<Switch
 										state={!v.hidden}
 										disabled={!!unreachable || moving || pickerBusy.has(v.id)}
 										on:change={(e) => setPickerVisible(v, e.detail)}
 									/>
+									<span class="min-w-0 break-all">
+										{v.name}{#if v.original}<span class="text-gray-500">&nbsp;· {$i18n.t('original')}</span>{/if}
+										{#if v.name !== v.id}<span class="block text-[0.6875rem] text-gray-500">{v.id}</span>{/if}
+									</span>
 								</li>
 							{/each}
 						</ul>

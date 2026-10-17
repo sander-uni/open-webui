@@ -9,6 +9,7 @@
 
 	import Markdown from './Markdown.svelte';
 	import ConsecutiveDetailsGroup from './Markdown/ConsecutiveDetailsGroup.svelte';
+	import InterjectionNote from '$lib/components/interjections/InterjectionNote.svelte'; // fork 0.3.3
 	import ToolChainPager from './ToolChainPager.svelte';
 	import {
 		OUTPUT_PAGE_SIZE,
@@ -146,6 +147,9 @@
 		{:else}
 			<div class="whitespace-pre-wrap text-[0.9375rem]">{displayItem.text}</div>
 		{/if}
+	{:else if displayItem.type === 'interjection'}
+		<!-- fork 0.3.3 -->
+		<InterjectionNote entries={displayItem.entries} held={displayItem.held} />
 	{:else if displayItem.type === 'detail_group'}
 		<ConsecutiveDetailsGroup
 			id={`${id}-${displayItem.id}`}

@@ -916,6 +916,10 @@ app.include_router(calendar.router, prefix='/api/v1/calendars', tags=['calendars
 from open_webui.routers import model_manager  # noqa: E402
 
 app.include_router(model_manager.router, prefix='/api/v1/model-manager', tags=['model-manager'])
+# Fork 0.3.3: messages sent during an agent reply (routers/interjections.py)
+from open_webui.routers import interjections as interjections_router  # noqa: E402
+
+app.include_router(interjections_router.router, prefix='/api/v1/interjections', tags=['interjections'])
 
 # SCIM 2.0 API for identity management
 if ENABLE_SCIM:

@@ -21,7 +21,7 @@
 			<p>{admin ? problem.admin_action : problem.user_action}</p>
 		{:else if operation}
 			<p class="font-medium">{operation.primary}</p>
-			<p>{operation.why}</p>
+			{#if operation.why}<p>{operation.why}</p>{/if}
 			<p>{operation.estimate_text}</p>
 		{/if}
 	</div>
@@ -34,7 +34,7 @@
 				{#each operation.steps as step (step.id)}
 					<li aria-current={step.status === 'active' ? 'step' : undefined}>
 						<span class="font-medium">{step.label}</span> · {step.status_text ?? step.status}
-						<p>{step.why}</p>
+						{#if step.why}<p>{step.why}</p>{/if}
 						<p class="tabular-nums">{elapsed(step.elapsed_s)} · {step.time_text}</p>
 					</li>
 				{/each}

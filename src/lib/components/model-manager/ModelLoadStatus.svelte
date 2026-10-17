@@ -109,7 +109,7 @@
 						type="button"
 						class={btn}
 						disabled={acting || !view.can_load}
-						on:click={() => act(() => loadManagedModel(localStorage.token, id))}
+						on:click={() => act(() => loadManagedModel(localStorage.token, id ?? ''))}
 						>{error ? 'Retry preparation' : 'Prepare now'}</button
 					>
 				{/if}

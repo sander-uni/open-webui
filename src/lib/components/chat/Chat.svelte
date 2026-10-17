@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { sendInterjection, trackInterjections } from '$lib/components/interjections/state'; // fork 0.3.3
 	import { v4 as uuidv4 } from 'uuid';
 	import { toast } from 'svelte-sonner';
 
@@ -2181,6 +2182,8 @@
 		}
 	};
 
+	$: trackInterjections($chatId, history); // fork 0.3.3: delivered, or back to the input
+
 	const onHistoryChange = (history) => {
 		if (history) {
 			bridge?.update();
@@ -3677,6 +3680,25 @@
 			pendingWebSearchPrompt = bridgeRequest ? null : (userPrompt ?? '');
 			openWebSearchConfirm();
 			return { status: 'deferred' };
+		}
+
+		// fork 0.3.3: during an agent reply that offers tools, a message goes to its next step
+		// instead of the queue. A reply without tools takes none: Open WebUI queues it as before.
+		if (!bridgeRequest) {
+			const running = history.currentId ? history.messages[history.currentId] : null;
+			if (running?.role === 'assistant' && !running.done) {
+				try {
+					if (await sendInterjection($chatId, running.id, userPrompt ?? '', files)) {
+						messageInput?.setText('');
+						prompt = '';
+						files = [];
+						return { status: 'rejected' };
+					}
+				} catch (e) {
+					toast.error(`${e}`);
+					return { status: 'rejected' };
+				}
+			}
 		}
 
 		if (
