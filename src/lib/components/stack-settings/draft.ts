@@ -18,8 +18,11 @@ export const shownValue = (s: StackSetting, draft: Draft) => {
 	return v === null ? s.default : v;
 };
 
+// Only kinds the services read without surrounding spaces are compared trimmed; text keeps every
+// character, so a change of only leading/trailing whitespace is still saved (review R16).
+const TRIMMED = ['int', 'float', 'port', 'choice', 'host'];
 const same = (s: StackSetting, a: string, b: string) =>
-	s.kind === 'bool' ? isTrue(a) === isTrue(b) : a.trim() === b.trim();
+	s.kind === 'bool' ? isTrue(a) === isTrue(b) : TRIMMED.includes(s.kind) ? a.trim() === b.trim() : a === b;
 
 /** The edits that change something, ready for saveStackSettings. */
 export const changesFrom = (settings: StackSetting[], draft: Draft) => {
@@ -28,7 +31,11 @@ export const changesFrom = (settings: StackSetting[], draft: Draft) => {
 		if (!(s.key in draft) || !isEditable(s)) continue;
 		const v = draft[s.key];
 		if (v === null) {
-			if (s.in_file || (s.kind === 'secret' && s.is_set)) out[s.key] = null;
+			// Clear on a key saves an empty value: removing the line would let a key from the
+			// launcher's environment come back (review R17).
+			if (s.kind === 'secret') {
+				if (s.is_set) out[s.key] = '';
+			} else if (s.in_file) out[s.key] = null;
 			continue;
 		}
 		if (s.kind === 'secret') {
@@ -41,7 +48,8 @@ export const changesFrom = (settings: StackSetting[], draft: Draft) => {
 };
 
 /** Saved in the settings file with a value other than the default (the page offers "Reset", which
- * removes the line). Values the launcher sets, or that come from its environment, have no line to remove. */
+ * removes the line), or a key that is set ("Clear"). Values the launcher sets, or that come from its
+ * environment, have no line to remove. */
 export const differsFromDefault = (s: StackSetting) =>
 	isEditable(s) && (s.kind === 'secret' ? !!s.is_set : s.in_file && !same(s, s.value, s.default));
 
@@ -62,3 +70,7 @@ export const sourceText = (s: StackSetting) =>
 				: s.source === 'environment'
 					? 'Set in the launcher environment (not in the settings file).'
 					: 'Default value.';
+
+/** After a save: drop only the edits that were sent; anything typed meanwhile stays (review R15). */
+export const keepUnsent = (draft: Draft, sent: Draft) =>
+	Object.fromEntries(Object.entries(draft).filter(([k, v]) => !(k in sent && sent[k] === v))) as Draft;

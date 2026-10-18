@@ -19,6 +19,7 @@
 		differsFromDefault,
 		isEditable,
 		isTrue,
+		keepUnsent,
 		matches,
 		shownValue,
 		sourceText,
@@ -51,6 +52,7 @@
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let destroyed = false;
 	let loadedFor = '';
+	let loadSeq = 0; // a load that started before a save (or a newer load) must not replace its result
 
 	$: title = service === 'ctxproxy' ? 'Context Proxy' : 'Run Logger';
 	$: changes = data ? changesFrom(data.settings, draft) : {};
@@ -69,9 +71,10 @@
 	}
 
 	const load = async (quiet = false) => {
+		const seq = ++loadSeq;
 		try {
 			const fresh = await getStackSettings(localStorage.token, service);
-			if (destroyed || fresh.service !== service) return;
+			if (destroyed || seq !== loadSeq || fresh.service !== service) return;
 			data = fresh;
 			loadError = '';
 		} catch (e) {
@@ -107,15 +110,20 @@
 	const save = async () => {
 		if (!data || changeCount === 0) return;
 		saving = true;
+		loadSeq++; // ignore loads already under way
 		const sent = changes;
+		const sentDraft = { ...draft };
+		const sentLines = [...removeLines];
 		const removed = removeLines.length;
 		const startOnly = Object.keys(sent).every(
 			(k) => data?.settings.find((s) => s.key === k)?.apply === 'start'
 		);
 		try {
-			data = await saveStackSettings(localStorage.token, service, sent, removeLines);
-			draft = {};
-			removeLines = [];
+			const fresh = await saveStackSettings(localStorage.token, service, sent, sentLines);
+			loadSeq++;
+			data = fresh;
+			draft = keepUnsent(draft, sentDraft);
+			removeLines = removeLines.filter((k) => !sentLines.includes(k));
 			errors = {};
 			toast.success(
 				startOnly && removed === 0
@@ -129,7 +137,14 @@
 					const g = data?.settings.find((s) => s.key === key)?.group;
 					if (g) open = { ...open, [g]: true };
 				}
-				toast.error($i18n.t('Some values are not valid; nothing was saved.'));
+				if (e.partial) {
+					toast.error(
+						`${$i18n.t('Saved only in part')}: ${e.partial.saved.join(', ') || '-'}. ${$i18n.t('See the messages next to the settings.')}`
+					);
+					await load(true);
+				} else {
+					toast.error($i18n.t('Some values are not valid; nothing was saved.'));
+				}
 			} else {
 				toast.error(e instanceof Error ? e.message : String(e));
 			}
@@ -242,6 +257,11 @@
 			{/if}
 		</div>
 
+		<fieldset
+			class="m-0 flex min-h-0 min-w-0 flex-1 flex-col border-0 p-0"
+			disabled={saving}
+			aria-busy={saving}
+		>
 		<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hover pr-1.5 pb-2">
 			{#if groups.length === 0}
 				<div class="py-6 text-center text-xs text-gray-400">{$i18n.t('No setting matches')}</div>
@@ -450,6 +470,7 @@
 				</section>
 			{/if}
 		</div>
+		</fieldset>
 
 		<div
 			class="flex items-center justify-between gap-2 border-t border-gray-100/60 pt-3 text-xs dark:border-white/[0.04]"

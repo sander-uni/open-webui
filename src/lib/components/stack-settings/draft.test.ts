@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StackSetting } from '$lib/apis/stack-settings';
-import { changesFrom, differsFromDefault, isEditable, matches, shownValue } from './draft';
+import { changesFrom, differsFromDefault, isEditable, keepUnsent, matches, shownValue } from './draft';
 
 const s = (over: Partial<StackSetting>): StackSetting => ({
 	key: 'CTXPROXY_X',
@@ -34,7 +34,8 @@ describe('stack settings drafts', () => {
 	it('secrets: blank keeps the key, null clears it, a value replaces it', () => {
 		const sec = s({ key: 'K', kind: 'secret', value: '', default: '', is_set: true });
 		expect(changesFrom([sec], { K: '' })).toEqual({});
-		expect(changesFrom([sec], { K: null })).toEqual({ K: null });
+		expect(changesFrom([sec], { K: null })).toEqual({ K: '' });
+		expect(changesFrom([{ ...sec, is_set: false }], { K: null })).toEqual({});
 		expect(changesFrom([sec], { K: 'new' })).toEqual({ K: 'new' });
 		expect(differsFromDefault(sec)).toBe(true);
 	});
@@ -62,5 +63,17 @@ describe('stack settings drafts', () => {
 		const x = s({ label: 'Compact at', key: 'CTXPROXY_COMPACT_AT', help: 'Estimated prompt size', value: '85000' });
 		expect(['compact', 'COMPACT_AT', 'prompt size', '85000', ''].every((q) => matches(x, q))).toBe(true);
 		expect(matches(x, 'images')).toBe(false);
+	});
+
+	it('text keeps edge whitespace; numbers and choices are compared trimmed (R16)', () => {
+		const t = s({ key: 'T', kind: 'longtext', value: 'hello', default: 'hello' });
+		expect(changesFrom([t], { T: 'hello\n' })).toEqual({ T: 'hello\n' });
+		expect(changesFrom([t], { T: '  hello' })).toEqual({ T: '  hello' });
+		expect(changesFrom([s({ key: 'N', value: '5' })], { N: ' 5 ' })).toEqual({});
+	});
+
+	it('after a save only the sent edits leave the draft (R15)', () => {
+		expect(keepUnsent({ A: '1', B: '2', C: null }, { A: '1', C: null })).toEqual({ B: '2' });
+		expect(keepUnsent({ A: '3' }, { A: '1' })).toEqual({ A: '3' }); // changed again meanwhile
 	});
 });

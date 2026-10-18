@@ -44,7 +44,11 @@ export type StackSettingsData = {
 };
 
 export class StackSettingsErrors extends Error {
-	constructor(public errors: Record<string, string>) {
+	/** partial: the save stopped halfway; these settings were saved (review R09). */
+	constructor(
+		public errors: Record<string, string>,
+		public partial: { saved: string[] } | null = null
+	) {
 		super('Some values are not valid');
 	}
 }
@@ -60,8 +64,8 @@ const call = async (token: string, method: string, service: StackService, body?:
 		...(body !== undefined ? { body: JSON.stringify(body) } : {})
 	});
 	const data = await res.json().catch(() => ({}));
-	if (res.status === 422 && data?.errors) {
-		throw new StackSettingsErrors(data.errors);
+	if ((res.status === 422 || res.status === 500) && data?.errors) {
+		throw new StackSettingsErrors(data.errors, data.partial ?? null);
 	}
 	if (!res.ok) {
 		throw new Error(typeof data?.detail === 'string' ? data.detail : `HTTP ${res.status}`);
