@@ -88,6 +88,7 @@
 	};
 
 	let stream;
+	let audioContext: AudioContext | null = null;
 	let speechRecognition;
 
 	let mediaRecorder;
@@ -117,8 +118,14 @@
 		return Math.min(1.0, Math.max(0.01, scaledRMS));
 	};
 
+	// Chrome on Android caps open audio outputs at 10.
+	const closeAudioContext = () => {
+		void audioContext?.close();
+		audioContext = null;
+	};
+
 	const analyseAudio = (stream) => {
-		const audioContext = new AudioContext();
+		audioContext = new AudioContext();
 		const audioStreamSource = audioContext.createMediaStreamSource(stream);
 
 		const analyser = audioContext.createAnalyser();
@@ -400,6 +407,7 @@
 		}
 
 		stream = null;
+		closeAudioContext();
 	};
 
 	const confirmRecording = async () => {
@@ -419,6 +427,7 @@
 		}
 
 		stream = null;
+		closeAudioContext();
 	};
 
 	let resizeObserver;
@@ -466,6 +475,7 @@
 		window.removeEventListener('keydown', handleKeyDown);
 		document.removeEventListener('visibilitychange', handleVisibilityChange);
 		releaseWakeLock();
+		closeAudioContext();
 		// remove resize observer
 		resizeObserver.disconnect();
 		releaseAudioSession?.(); // fork
