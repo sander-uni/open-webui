@@ -105,6 +105,7 @@ from open_webui.utils.filter import (
 from open_webui.utils.json_codec import JSONCodec
 from open_webui.utils.memory import add_memory_context, review_memory_after_turn
 from open_webui.utils import interjections  # fork 0.3.3: messages sent during an agent reply
+from open_webui.utils import compaction_steps  # fork 0.3.4: context compactions as reply steps
 from open_webui.utils.misc import (
     add_or_update_system_message,
     add_or_update_user_message,
@@ -5106,6 +5107,20 @@ async def streaming_chat_response_handler(response, ctx):
 
                     filter_extra_params = {'__body__': form_data, **extra_params} if filter_functions else None
 
+                    async def apply_compaction_event(event):
+                        # fork 0.3.4: ctxproxy compacted the context before this request
+                        change = compaction_steps.apply(output, event, output_id)
+                        if change is None:
+                            return
+                        output_index, item, added = change
+                        await emit_response_completion_event(
+                            {
+                                'type': 'response.output_item.added' if added else 'response.output_item.done',
+                                'output_index': output_index,
+                                'item': item.copy(),
+                            }
+                        )
+
                     async for line in response.body_iterator:
                         line = line.decode('utf-8', 'replace') if isinstance(line, bytes) else line
                         data = line
@@ -5266,6 +5281,10 @@ async def streaming_chat_response_handler(response, ctx):
                                                 'data': {'usage': usage},
                                             }
                                         )
+                                    continue
+                                elif isinstance(data.get('ctxproxy'), dict) and not data.get('choices'):
+                                    # fork 0.3.4: "Compacting context…" / "Compaction #N" step
+                                    await apply_compaction_event(data['ctxproxy'])
                                     continue
                                 else:
                                     choices = data.get('choices', [])
@@ -6647,6 +6666,7 @@ async def streaming_chat_response_handler(response, ctx):
 
                 # fork 0.3.3: no next step; messages still waiting are not delivered
                 interjections.close(interjection_run)
+                compaction_steps.close(full_output())  # fork 0.3.4: never "completed" without a number
 
                 # Mark all in-progress items as completed
                 for item in [*prior_output, *output]:

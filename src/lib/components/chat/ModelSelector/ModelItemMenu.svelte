@@ -11,6 +11,7 @@
 	import Pencil from '$lib/components/icons/Pencil.svelte';
 	import { config, pinnedModels, settings, showSettings, user } from '$lib/stores';
 	import GlobeAlt from '$lib/components/icons/GlobeAlt.svelte';
+	import ArrowUpTray from '$lib/components/icons/ArrowUpTray.svelte'; // fork 0.3.4
 
 	const i18n = getContext('i18n');
 
@@ -21,6 +22,8 @@
 	export let copyLinkHandler: Function = () => {};
 	export let deleteModelHandler: Function = () => {};
 	export let onEdit: () => void = () => {};
+	// fork 0.3.4: put the model manager's loaded model away (admins, loaded model only)
+	export let managerUnload: (() => void) | null = null;
 
 	export let onClose: Function = () => {};
 
@@ -101,6 +104,27 @@
 						<div class="flex items-center">{$i18n.t('Delete')}</div>
 					</button>
 				{/if}
+
+				<hr class="border-gray-50 dark:border-gray-800/30 mx-1 my-0.5" />
+			{/if}
+
+			{#if managerUnload}
+				<!-- fork 0.3.4 -->
+				<button
+					type="button"
+					class="select-none flex h-[1.6875rem] w-full items-center gap-2 rounded-xl px-2 text-[0.8125rem] hover:bg-gray-50/40 dark:hover:bg-gray-800/40 transition"
+					on:click={(e) => {
+						e.stopPropagation();
+						e.preventDefault();
+
+						show = false;
+						managerUnload?.();
+					}}
+				>
+					<ArrowUpTray className="size-3.5" />
+
+					<div class="flex items-center">{$i18n.t('Unload')}</div>
+				</button>
 
 				<hr class="border-gray-50 dark:border-gray-800/30 mx-1 my-0.5" />
 			{/if}

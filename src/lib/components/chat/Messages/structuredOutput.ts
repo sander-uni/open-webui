@@ -71,7 +71,26 @@ export type OutputDisplayItem =
 			id: string;
 			entries: { id: string; text: string; files?: any[] }[];
 			held: boolean;
+	  }
+	| {
+			// fork 0.3.4: ctxproxy compacted the context before this step
+			type: 'compaction';
+			id: string;
+			kind: 'summary' | 'cut';
+			status: string;
+			n: number | null;
+			conv: string | null;
+			reason: string;
+			seconds: number | null;
+			dropped: number | null;
 	  };
+
+/** fork 0.3.4: output item type for ctxproxy's compactions (backend utils/compaction_steps.py). */
+export const COMPACTION_ITEM_TYPE = 'open_webui:ctxproxy_compaction';
+
+function positiveNumber(value: unknown): number | null {
+	return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
 
 type ResponseStreamEvent = {
 	type?: string;
@@ -418,6 +437,23 @@ export function buildOutputDisplayItems(output: OutputItem[] = []): OutputDispla
 			item.name === 'ask_user' &&
 			(item.status === 'pending' || item.status === 'in_progress')
 		) {
+			return;
+		}
+
+		if (item.type === COMPACTION_ITEM_TYPE) {
+			// fork 0.3.4: its own step between the tool steps, like the user's interjections
+			flushDetails();
+			displayItems.push({
+				type: 'compaction',
+				id: `compaction-${item.id ?? index}`,
+				kind: item.kind === 'cut' ? 'cut' : 'summary',
+				status: String(item.status ?? ''),
+				n: positiveNumber(item.n),
+				conv: typeof item.conv === 'string' ? item.conv : null,
+				reason: typeof item.reason === 'string' ? item.reason : '',
+				seconds: positiveNumber(item.seconds),
+				dropped: positiveNumber(item.dropped_steps)
+			});
 			return;
 		}
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any
 
 from urllib.parse import quote
@@ -84,6 +85,56 @@ async def get_chat_stats(chat_id: str, user=Depends(get_verified_user)):
         if await Chats.get_chat_by_id_and_user_id(chat_id, user.id) is None:
             raise HTTPException(status_code=404, detail='Chat not found')
     return await _call('GET', f'/mm/chat-stats?chat_id={quote(chat_id, safe="")}')
+
+
+# fork 0.3.4: the notes ctxproxy gave the model when it compacted a chat ("View summary").
+CTXPROXY_URL = os.environ.get('CTXPROXY_URL', 'http://127.0.0.1:8100').rstrip('/')
+_COMPACTION_TYPE = 'open_webui:ctxproxy_compaction'  # utils/compaction_steps.py
+_CONV_KEY = re.compile(r'^[0-9a-f]{1,64}$')
+
+
+def _compaction_key(output, n: int) -> str | None:
+    """The ctxproxy conversation key of compaction #n in a stored reply's output."""
+    for item in reversed(output if isinstance(output, list) else []):
+        if isinstance(item, dict) and item.get('type') == _COMPACTION_TYPE and item.get('n') == n:
+            conv = item.get('conv')
+            if isinstance(conv, str) and _CONV_KEY.match(conv):
+                return conv
+    return None
+
+
+@router.get('/compactions/{chat_id}/{message_id}/{n}')
+async def get_compaction(chat_id: str, message_id: str, n: int, conv: str = '', user=Depends(get_verified_user)):
+    """The note the model received in place of the steps compaction #n replaced, exactly as sent.
+    The chat's owner and admins only. The conversation key comes from the stored reply (ctxproxy
+    reported it when it compacted); only temporary chats, which are never stored, pass it."""
+    if chat_id.startswith(_TEMPORARY_PREFIXES):
+        key = conv if _CONV_KEY.match(conv) else None
+    else:
+        from open_webui.models.chats import Chats  # here, so this router imports on its own
+
+        if user.role != 'admin' and await Chats.get_chat_by_id_and_user_id(chat_id, user.id) is None:
+            raise HTTPException(status_code=404, detail='Chat not found')
+        message = await Chats.get_message_by_id_and_message_id(chat_id, message_id)
+        key = _compaction_key((message or {}).get('output'), n)
+    if not key:
+        raise HTTPException(status_code=404, detail=f'This reply has no compaction #{n}.')
+    try:
+        async with aiohttp.ClientSession(timeout=_TIMEOUT, trust_env=False) as session:
+            async with session.get(f'{CTXPROXY_URL}/proxy/compactions', params={'conv': key, 'n': str(n)}) as resp:
+                data = await resp.json(content_type=None)
+                status = resp.status
+    except (aiohttp.ClientError, TimeoutError, ValueError) as e:
+        log.warning('ctxproxy at %s not reachable for compaction %s: %r', CTXPROXY_URL, n, e)
+        raise HTTPException(
+            status_code=503,
+            detail='The context proxy is not reachable, so the summary cannot be shown right now. '
+            'Try again in a minute; if this continues, ask the admin to check the launcher.',
+        )
+    if status >= 400 or not isinstance(data, dict) or not isinstance(data.get('note'), str):
+        message = ((data or {}).get('error') or {}).get('message') if isinstance(data, dict) else None
+        raise HTTPException(status_code=404, detail=message or f'Compaction #{n} is no longer stored.')
+    return {'n': n, 'note': data['note'], 'created': data.get('created')}
 
 
 @router.post('/load')

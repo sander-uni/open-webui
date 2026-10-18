@@ -29,6 +29,7 @@
 	export let compareEnabled = false;
 
 	export let unloadModelHandler: (model: any) => void = () => {};
+	export let managerUnloadHandler: (model: any) => void = () => {}; // fork 0.3.4
 	export let pinModelHandler: (modelId: string) => void = () => {};
 	export let deleteModelHandler: (model: any) => void = () => {};
 	export let selectionOnly = false;
@@ -56,6 +57,12 @@
 	// fork: local model manager state for this model
 	$: mmId = managedId(item.model, $managerState);
 	$: mmBlocked = managerBlock(item.model, $managerState);
+	// fork 0.3.4: "Unload" in the More menu of the model the manager has loaded (admins)
+	$: mmCanUnload =
+		$user?.role === 'admin' &&
+		!!mmId &&
+		$managerState?.phase === 'ready' &&
+		$managerState?.model === mmId;
 </script>
 
 <!-- fork round 4: variable height lets the pre-send cost wrap on a phone. -->
@@ -322,6 +329,7 @@
 				{pinModelHandler}
 				{deleteModelHandler}
 				{onEdit}
+				managerUnload={mmCanUnload ? () => managerUnloadHandler(item.model) : null}
 				copyLinkHandler={() => {
 					copyLinkHandler(item.model);
 				}}

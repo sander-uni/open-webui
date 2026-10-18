@@ -61,3 +61,21 @@ export const getChatStats = async (
 	if (!res.ok) return null;
 	return (await res.json().catch(() => null)) as ChatStats | null;
 };
+
+// 0.3.4: the note the model received when ctxproxy compacted a chat ("View summary").
+export type CompactionNote = { n: number; note: string; created?: number | null };
+
+export const getCompactionNote = (
+	token: string,
+	chatId: string,
+	messageId: string,
+	n: number,
+	conv = ''
+): Promise<CompactionNote> =>
+	call(
+		token,
+		'GET',
+		`/compactions/${encodeURIComponent(chatId)}/${encodeURIComponent(messageId)}/${n}${
+			conv ? `?conv=${encodeURIComponent(conv)}` : ''
+		}`
+	);

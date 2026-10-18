@@ -241,7 +241,8 @@ describe('tool-chain output window', () => {
 				reasoningCount: 0,
 				messageCount: 0,
 				codeInterpreterCount: 0,
-				failedCount: 0
+				failedCount: 0,
+				compactionCount: 0
 			},
 			hiddenRun: null,
 			runStart: 0

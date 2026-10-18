@@ -57,6 +57,12 @@
 				text: plural(hiddenTotals.codeInterpreterCount, '{{COUNT}} analysis', '{{COUNT}} analyses')
 			});
 		}
+		if (hiddenTotals.compactionCount > 0) {
+			// fork 0.3.4
+			parts.push({
+				text: plural(hiddenTotals.compactionCount, '{{COUNT}} compaction', '{{COUNT}} compactions')
+			});
+		}
 		return parts;
 	})();
 

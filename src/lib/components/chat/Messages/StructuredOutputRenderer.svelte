@@ -10,6 +10,7 @@
 	import Markdown from './Markdown.svelte';
 	import ConsecutiveDetailsGroup from './Markdown/ConsecutiveDetailsGroup.svelte';
 	import InterjectionNote from '$lib/components/interjections/InterjectionNote.svelte'; // fork 0.3.3
+	import CompactionStep from '$lib/components/compaction/CompactionStep.svelte'; // fork 0.3.4
 	import ToolChainPager from './ToolChainPager.svelte';
 	import {
 		OUTPUT_PAGE_SIZE,
@@ -150,6 +151,21 @@
 	{:else if displayItem.type === 'interjection'}
 		<!-- fork 0.3.3 -->
 		<InterjectionNote entries={displayItem.entries} held={displayItem.held} />
+	{:else if displayItem.type === 'compaction'}
+		<!-- fork 0.3.4 -->
+		<CompactionStep
+			kind={displayItem.kind}
+			status={displayItem.status}
+			n={displayItem.n}
+			conv={displayItem.conv}
+			reason={displayItem.reason}
+			seconds={displayItem.seconds}
+			dropped={displayItem.dropped}
+			{chatId}
+			{messageId}
+			messageDone={done}
+			compact={compactPreview}
+		/>
 	{:else if displayItem.type === 'detail_group'}
 		<ConsecutiveDetailsGroup
 			id={`${id}-${displayItem.id}`}

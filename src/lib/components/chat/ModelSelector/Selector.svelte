@@ -52,7 +52,13 @@
 	import TagSelector from '$lib/components/workspace/common/TagSelector.svelte';
 
 	import ModelItem from './ModelItem.svelte';
-	import { managedId, managerBlock, managerState } from '$lib/components/model-manager/state'; // fork
+	import {
+		managedId,
+		managerBlock,
+		managerState,
+		refreshManagerState
+	} from '$lib/components/model-manager/state'; // fork
+	import { unloadManagedModel } from '$lib/apis/model-manager'; // fork 0.3.4
 
 	const i18n: any = getContext('i18n');
 	const dispatch = createEventDispatcher();
@@ -796,6 +802,43 @@
 	let showDeleteConfirm = false;
 	let deleteModelTarget: any = null;
 
+	// fork 0.3.4: Unload from the More menu puts the manager's loaded model away.
+	let showManagerUnloadConfirm = false;
+	let managerUnloadTarget: {
+		id: string;
+		inflight: number;
+		pinned: boolean;
+		reload: string;
+	} | null = null;
+
+	const managerUnloadHandler = (model: any) => {
+		const state = $managerState;
+		const id = managedId(model, state);
+		if (!state || !id || state.model !== id) return;
+		show = false;
+		managerUnloadTarget = {
+			id,
+			inflight: state.inflight ?? 0,
+			pinned: !!state.pinned,
+			reload: state.ux?.models?.[id]?.reload_text ?? ''
+		};
+		showManagerUnloadConfirm = true;
+	};
+
+	const confirmManagerUnload = async () => {
+		const target = managerUnloadTarget;
+		managerUnloadTarget = null;
+		if (!target) return;
+		const pending = toast.loading($i18n.t('Putting {{model}} away…', { model: target.id }));
+		try {
+			await unloadManagedModel(localStorage.token, target.inflight > 0);
+			toast.success($i18n.t('{{model}} was put away.', { model: target.id }), { id: pending });
+		} catch (error) {
+			toast.error(String(error), { id: pending });
+		}
+		refreshManagerState();
+	};
+
 	const deleteModelHandler = async (model: any) => {
 		show = false;
 		deleteModelTarget = model;
@@ -891,6 +934,27 @@
 	})}
 	on:confirm={() => {
 		confirmDeleteModel();
+	}}
+/>
+
+<!-- fork 0.3.4 -->
+<ConfirmDialog
+	bind:show={showManagerUnloadConfirm}
+	title={managerUnloadTarget?.inflight
+		? $i18n.t('Unload while a request is running?')
+		: $i18n.t('Put this model away?')}
+	message={managerUnloadTarget?.inflight
+		? $i18n.t('{{count}} request(s) are still running on {{model}}. Unloading now cuts them off.', {
+				count: managerUnloadTarget.inflight,
+				model: managerUnloadTarget.id
+			})
+		: `${managerUnloadTarget?.reload || $i18n.t('The next message will need a fresh start, which can take several minutes.')}${managerUnloadTarget?.pinned ? ` ${$i18n.t('This also removes its pin.')}` : ''}`}
+	confirmLabel={$i18n.t('Unload')}
+	on:confirm={() => {
+		confirmManagerUnload();
+	}}
+	on:cancel={() => {
+		managerUnloadTarget = null;
 	}}
 />
 
@@ -1092,6 +1156,7 @@
 										value={primaryValue}
 										{pinModelHandler}
 										{unloadModelHandler}
+										{managerUnloadHandler}
 										{deleteModelHandler}
 										{selectionOnly}
 										{compareEnabled}

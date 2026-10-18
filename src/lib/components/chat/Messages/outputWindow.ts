@@ -1,5 +1,6 @@
 import {
 	buildOutputDisplayItems,
+	COMPACTION_ITEM_TYPE,
 	type OutputDetailToken,
 	type OutputDisplayItem,
 	type OutputItem
@@ -52,6 +53,8 @@ export type HiddenTotals = {
 	messageCount: number;
 	codeInterpreterCount: number;
 	failedCount: number;
+	/** fork 0.3.4: ctxproxy compactions among the hidden steps */
+	compactionCount: number;
 };
 
 export type OutputWindow = {
@@ -216,7 +219,8 @@ export function selectOutputWindow(
 		reasoningCount: 0,
 		messageCount: 0,
 		codeInterpreterCount: 0,
-		failedCount: 0
+		failedCount: 0,
+		compactionCount: 0
 	};
 	for (const index of steps) {
 		if (selected.has(index)) continue;
@@ -224,6 +228,7 @@ export function selectOutputWindow(
 		if (item.type === 'reasoning') hiddenTotals.reasoningCount++;
 		else if (item.type === 'message') hiddenTotals.messageCount++;
 		else if (item.type === 'open_webui:code_interpreter') hiddenTotals.codeInterpreterCount++;
+		else if (item.type === COMPACTION_ITEM_TYPE) hiddenTotals.compactionCount++;
 		else if (item.type === 'function_call' || OPENAI_TOOL_NAMES[item.type ?? '']) {
 			const name = toolName(item);
 			hiddenTotals.toolCallCount++;

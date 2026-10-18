@@ -473,6 +473,9 @@
 				</label>
 				<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]"
 					disabled={busy || !!unreachable || !status.ux?.actions?.can_cancel} on:click={cancelLoad}>{$i18n.t('Cancel loading for everyone')}</button>
+				<!-- fork 0.3.4: unload without scrolling to the loaded model's card -->
+				<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]"
+					disabled={busy || !!unreachable || !status.ux?.actions?.can_unload} on:click={unload}>{$i18n.t('Unload current model')}</button>
 			</div>
 			<p class="text-xs">{$i18n.t('Pin never expires. It prevents automatic unloading and blocks other models until you unpin. Unload puts the model away; messages already answering can be interrupted only after confirmation. Cancel is available only during preparation and affects everyone waiting for that model.')}</p>
 			<form class="space-y-2" on:submit|preventDefault={saveIdle}>

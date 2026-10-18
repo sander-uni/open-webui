@@ -483,6 +483,8 @@ def convert_output_to_messages(
 
     for item in output:
         item_type = item.get('type', '')
+        if item_type == 'open_webui:ctxproxy_compaction':
+            continue  # fork 0.3.4: display only; must not flush anything (prompt bytes unchanged)
         if item_type != 'function_call_output':
             flush_tool_outputs()
             flush_tool_images()
