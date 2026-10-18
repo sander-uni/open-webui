@@ -78,15 +78,26 @@ async def toolbox_hold(server_id: str, tool: str, chat_id: str | None):
             )
         yield
         return
-    if status >= 400:
+    error = data.get('error') if isinstance(data.get('error'), dict) else {}
+    if status >= 400 and error.get('code') == 'toolbox_hold_failed':
         _counted.add(_key(url))
-        error = data.get('error')
-        message = error.get('message') if isinstance(error, dict) else None
         raise ToolboxHoldRefused(
-            message
+            error.get('message')
             or 'This tool was not run: the background GPU job on the toolbox PC could not be paused. '
             'Stop working on this task and ask the user to sort it out.'
         )
+    if status >= 400:
+        # Not an answer from the toolbox hold (a modelmgr older than 0.3.7, say): only a server
+        # that counted before fails closed.
+        log.warning('unexpected answer %s from the model manager for %s: %r', status, tool, data)
+        if _key(url) in _counted:
+            raise ToolboxHoldRefused(
+                'This tool was not run. The model manager did not confirm that the background GPU job '
+                'on the toolbox PC is paused. Stop working on this task and ask the user to check '
+                'Admin Settings > Miner. Do not call this tool again until the user says it is fixed.'
+            )
+        yield
+        return
     if data.get('counted'):
         _counted.add(_key(url))
         call = data.get('call')
