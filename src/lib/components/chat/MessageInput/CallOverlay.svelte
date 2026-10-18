@@ -56,6 +56,7 @@
 	let avatarSpeaking = false;
 	let outputLevel = 0;
 	let callAudioElement: HTMLAudioElement;
+	let fallbackElement: HTMLAudioElement | null = null; // fork: see playAudio
 	let playbackContext: AudioContext | undefined;
 	let playbackSource: MediaElementAudioSourceNode | undefined;
 	let playbackAnalyser: AnalyserNode | undefined;
@@ -572,8 +573,34 @@
 				audioElement.onpause = finish;
 
 				audioElement.play().catch((error) => {
-					console.error(error);
-					finish(error);
+					// fork: iOS refuses a media element that was never started by a tap. This one
+					// is first used after the call began, so fall back to the page's audio element,
+					// which the chat's AudioQueue unlocks on the first tap (no avatar animation then).
+					const shared = document.getElementById('audioElement') as HTMLAudioElement | null;
+					if (error?.name !== 'NotAllowedError' || !shared || settled) {
+						console.error(error);
+						finish(error);
+						return;
+					}
+					audioElement.onpause = null;
+					audioElement.onerror = null;
+					audioElement.onended = null;
+					const done = (e: unknown = null) => {
+						shared.onended = shared.onerror = shared.onpause = null;
+						if (fallbackElement === shared) fallbackElement = null;
+						finish(e as Error | null);
+					};
+					shared.src = audio.src;
+					shared.muted = false;
+					shared.playbackRate = audioElement.playbackRate;
+					shared.onended = () => done();
+					shared.onerror = () => done();
+					shared.onpause = () => done();
+					fallbackElement = shared;
+					shared.play().catch((e) => {
+						console.error(e);
+						done(e);
+					});
 				});
 			});
 		} else {
@@ -604,6 +631,9 @@
 			audioElement.pause();
 			audioElement.currentTime = 0;
 		}
+		// fork: the shared element used when the call's own one was refused (iOS); pausing it
+		// ends that playback through its onpause, like the call's own element above
+		fallbackElement?.pause();
 	};
 
 	let audioAbortController = new AbortController();
