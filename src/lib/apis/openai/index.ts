@@ -1,3 +1,4 @@
+import { OUTPUT_TAIL_HEADER } from '$lib/utils/output-tail'; // CUSTOM
 import { OPENAI_API_BASE_URL, WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 
 export const getErrorMessage = (err: any, fallback = 'Server connection failed') => {
@@ -435,7 +436,8 @@ export const generateOpenAIChatCompletion = async (
 		method: 'POST',
 		headers: {
 			Authorization: `Bearer ${token}`,
-			'Content-Type': 'application/json'
+			'Content-Type': 'application/json',
+			[OUTPUT_TAIL_HEADER]: '1' // CUSTOM: accept tail-only updates for continued replies
 		},
 		credentials: 'include',
 		body: JSON.stringify(body)

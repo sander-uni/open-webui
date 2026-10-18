@@ -1,0 +1,7 @@
+dist/
+__pycache__/
+demos/runs/
+demos/state.json
+demos/answers.json
+demos/browser-check/
+demos/browser-profile/

@@ -3,13 +3,22 @@
 	import ToolCallDisplay from '$lib/components/common/ToolCallDisplay.svelte';
 	import TerminalOutputFile from './TerminalOutputFile.svelte';
 	import { resolveChatMessageToolCall } from '$lib/apis/chats';
-	import { settings } from '$lib/stores';
+	import { config, settings } from '$lib/stores';
+	import { getToolChainDisplaySettings } from '$lib/utils/custom-settings';
 	import { toast } from 'svelte-sonner';
 
 	import Markdown from './Markdown.svelte';
 	import ConsecutiveDetailsGroup from './Markdown/ConsecutiveDetailsGroup.svelte';
+	import InterjectionNote from '$lib/components/interjections/InterjectionNote.svelte'; // fork 0.3.3
+	import CompactionStep from '$lib/components/compaction/CompactionStep.svelte'; // fork 0.3.4
+	import ToolChainPager from './ToolChainPager.svelte';
 	import {
-		buildOutputDisplayItems,
+		OUTPUT_PAGE_SIZE,
+		selectOutputWindow,
+		buildWindowDisplayItems,
+		getOutputDetailKey
+	} from './outputWindow';
+	import {
 		type OutputDetailToken,
 		type OutputDisplayItem,
 		type OutputItem
@@ -67,10 +76,50 @@
 		compactPreview ? 'text-xs' : 'text-[0.9375rem]'
 	} text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition`;
 
-	$: displayItems = buildOutputDisplayItems(output) as OutputDisplayItem[];
+	let visibleSteps = OUTPUT_PAGE_SIZE;
+	let autoGrown = 0;
+	let windowId = '';
+	$: displaySettings = getToolChainDisplaySettings($config?.custom_settings);
+	$: nextWindowId = `${chatId}:${messageId}:${id}:${displaySettings.enabled}:${displaySettings.page_size}`;
+	$: if (windowId !== nextWindowId) {
+		windowId = nextWindowId;
+		visibleSteps = displaySettings.page_size;
+		autoGrown = 0;
+	}
+	$: outputWindow = selectOutputWindow(output, displaySettings.enabled ? visibleSteps : Infinity, {
+		live: !done,
+		includeEmbeds: allowEmbeds
+	});
+	$: displayItems = buildWindowDisplayItems(
+		outputWindow.output,
+		outputWindow
+	) as OutputDisplayItem[];
+	// When hidden steps continue the first group, page inside it: the controls then only
+	// show (and only auto-load) while that group is expanded.
+	// Only when every hidden step belongs to that group; otherwise hidden steps span many
+	// groups and messages, and the pager (with its totals) goes above the reply.
+	$: pagerInGroup =
+		displaySettings.enabled &&
+		outputWindow.hiddenSteps > 0 &&
+		outputWindow.hiddenRun?.steps === outputWindow.hiddenSteps &&
+		displayItems[0]?.type === 'detail_group';
 </script>
 
-{#each displayItems as displayItem (displayItem.id)}
+{#key windowId}
+	{#if displaySettings.enabled && !pagerInGroup}
+		<ToolChainPager
+			totalSteps={outputWindow.totalSteps}
+			hiddenTotals={outputWindow.hiddenTotals}
+			hiddenSteps={outputWindow.hiddenSteps}
+			pageSize={displaySettings.page_size}
+			autoLoad={displaySettings.auto_load}
+			bind:visibleSteps
+			bind:autoGrown
+		/>
+	{/if}
+{/key}
+
+{#each displayItems as displayItem, displayIndex (displayItem.id)}
 	{#if displayItem.type === 'message'}
 		{#if renderMarkdown}
 			<div class="markdown-prose">
@@ -99,6 +148,24 @@
 		{:else}
 			<div class="whitespace-pre-wrap text-[0.9375rem]">{displayItem.text}</div>
 		{/if}
+	{:else if displayItem.type === 'interjection'}
+		<!-- fork 0.3.3 -->
+		<InterjectionNote entries={displayItem.entries} held={displayItem.held} />
+	{:else if displayItem.type === 'compaction'}
+		<!-- fork 0.3.4 -->
+		<CompactionStep
+			kind={displayItem.kind}
+			status={displayItem.status}
+			n={displayItem.n}
+			conv={displayItem.conv}
+			reason={displayItem.reason}
+			seconds={displayItem.seconds}
+			dropped={displayItem.dropped}
+			{chatId}
+			{messageId}
+			messageDone={done}
+			compact={compactPreview}
+		/>
 	{:else if displayItem.type === 'detail_group'}
 		<ConsecutiveDetailsGroup
 			id={`${id}-${displayItem.id}`}
@@ -109,9 +176,23 @@
 			resolvable={!!chatId && !!messageId && save}
 			{resolvingCallId}
 			onResolve={resolveToolCall}
+			hiddenSummary={displayIndex === 0 ? outputWindow.hiddenRun : null}
 		>
 			<div slot="content">
-				{#each displayItem.tokens as detailToken, detailIndex}
+				{#if displayIndex === 0 && pagerInGroup}
+					{#key windowId}
+						<ToolChainPager
+							totalSteps={outputWindow.totalSteps}
+							hiddenTotals={outputWindow.hiddenTotals}
+							hiddenSteps={outputWindow.hiddenSteps}
+							pageSize={displaySettings.page_size}
+							autoLoad={displaySettings.auto_load}
+							bind:visibleSteps
+							bind:autoGrown
+						/>
+					{/key}
+				{/if}
+				{#each displayItem.tokens as detailToken, detailIndex (getOutputDetailKey(detailToken, detailIndex))}
 					{#if detailToken.attributes?.type === 'tool_calls'}
 						<ToolCallDisplay
 							id={`${id}-${displayItem.id}-${detailIndex}-tool-call`}

@@ -40,6 +40,8 @@
 	export let resolvable = false;
 	export let resolvingCallId = '';
 	export let onResolve: (callId: string, approved: boolean) => void = () => {};
+	// CUSTOM: counts and embeds of paged-out steps that belong to this group (fork tool-chain paging).
+	export let hiddenSummary: import('../outputWindow').HiddenRunSummary | null = null;
 
 	let open = $settings?.expandDetails ?? false;
 
@@ -94,7 +96,9 @@
 		);
 	}
 
-	$: toolCallCount = tokens.filter((t) => t?.attributes?.type === 'tool_calls').length;
+	$: toolCallCount =
+		tokens.filter((t) => t?.attributes?.type === 'tool_calls').length +
+		(hiddenSummary?.toolCallCount ?? 0); // CUSTOM
 	$: reasoningCount = tokens.filter((t) => t?.attributes?.type === 'reasoning').length;
 	$: pendingToolTokens = tokens.filter(
 		(t) => t?.attributes?.type === 'tool_calls' && t?.attributes?.status === 'pending'
@@ -120,14 +124,21 @@
 			(t?.attributes?.status === 'failed' ||
 				(t?.attributes?.done === 'true' && isToolResultError(decode(t?.text ?? ''))))
 	);
+	// CUSTOM: paged-out steps of this group count too (fork tool-chain paging).
+	$: anyRejected = hasRejected || !!hiddenSummary?.rejected;
+	$: anyError = hasError || !!hiddenSummary?.failed;
 
-	$: codeInterpreterCount = tokens.filter((t) => t?.attributes?.type === 'code_interpreter').length;
+	$: codeInterpreterCount =
+		tokens.filter((t) => t?.attributes?.type === 'code_interpreter').length +
+		(hiddenSummary?.codeInterpreterCount ?? 0); // CUSTOM
 
 	// Collect all embeds from tool_calls tokens
 	$: allEmbeds = (() => {
 		if (!allowEmbeds) return [];
 
-		const result: Array<{ name: string; embed: string; args: string }> = [];
+		const result: Array<{ name: string; embed: string; args: string }> = [
+			...((hiddenSummary?.embeds ?? []) as Array<{ name: string; embed: string; args: string }>) // CUSTOM
+		];
 		for (const t of tokens) {
 			if (t?.attributes?.type !== 'tool_calls') continue;
 			const raw = decode(t.attributes?.embeds ?? '');
@@ -152,7 +163,10 @@
 
 		if (toolCallCount > 0) {
 			// Group by tool name and show counts
-			const nameCounts: Record<string, number> = {};
+			const nameCounts: Record<string, number> = Object.assign(
+				Object.create(null),
+				hiddenSummary?.toolCounts
+			); // CUSTOM
 			tokens
 				.filter((t) => t?.attributes?.type === 'tool_calls')
 				.forEach((t) => {
@@ -207,11 +221,11 @@
 					<div>
 						<Spinner className="size-4" />
 					</div>
-				{:else if hasRejected}
+				{:else if anyRejected}
 					<div class="text-red-400 dark:text-red-500">
 						<XMark className="size-4" strokeWidth="2.5" />
 					</div>
-				{:else if toolCallCount > 0 && hasError}
+				{:else if toolCallCount > 0 && anyError}
 					<div class="text-red-500 dark:text-red-400">
 						<XMark className="size-4" strokeWidth="2.5" />
 					</div>

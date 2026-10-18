@@ -64,7 +64,33 @@ export type OutputDisplayItem =
 			type: 'file';
 			id: string;
 			item: Record<string, unknown>;
+	  }
+	| {
+			// fork 0.3.3: messages the user sent while the agent worked, where they were delivered
+			type: 'interjection';
+			id: string;
+			entries: { id: string; text: string; files?: any[] }[];
+			held: boolean;
+	  }
+	| {
+			// fork 0.3.4: ctxproxy compacted the context before this step
+			type: 'compaction';
+			id: string;
+			kind: 'summary' | 'cut';
+			status: string;
+			n: number | null;
+			conv: string | null;
+			reason: string;
+			seconds: number | null;
+			dropped: number | null;
 	  };
+
+/** fork 0.3.4: output item type for ctxproxy's compactions (backend utils/compaction_steps.py). */
+export const COMPACTION_ITEM_TYPE = 'open_webui:ctxproxy_compaction';
+
+function positiveNumber(value: unknown): number | null {
+	return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
 
 type ResponseStreamEvent = {
 	type?: string;
@@ -139,7 +165,8 @@ function getReasoningText(item: OutputItem): string {
 
 function getToolResultText(item?: OutputItem): string {
 	return (item?.output ?? [])
-		.filter((part) => part?.type !== 'input_image')
+		// fork 0.3.3: the user's message is shown on its own, not inside the tool result
+		.filter((part) => part?.type !== 'input_image' && !(part as any)?.interjection)
 		.map((part) => {
 			if (part?.text === undefined || part?.text === null) {
 				return '';
@@ -218,7 +245,9 @@ function buildToolCallToken(item: OutputItem, toolOutputByCallId: Record<string,
 	return {
 		summary: isPending
 			? 'Tool Approval Needed'
-			: isDone
+			: (resultItem as any)?.held // fork 0.3.3
+				? 'Not run: waited for your message'
+				: isDone
 				? 'Tool Executed'
 				: isExecuting
 					? 'Executing...'
@@ -390,6 +419,16 @@ export function buildOutputDisplayItems(output: OutputItem[] = []): OutputDispla
 					item: inlineFile
 				});
 			}
+			const interjections = (item as any).interjections; // fork 0.3.3
+			if (Array.isArray(interjections) && interjections.length) {
+				flushDetails();
+				displayItems.push({
+					type: 'interjection',
+					id: `interjection-${item.id ?? index}`,
+					entries: interjections,
+					held: !!(item as any).held
+				});
+			}
 			return;
 		}
 
@@ -398,6 +437,23 @@ export function buildOutputDisplayItems(output: OutputItem[] = []): OutputDispla
 			item.name === 'ask_user' &&
 			(item.status === 'pending' || item.status === 'in_progress')
 		) {
+			return;
+		}
+
+		if (item.type === COMPACTION_ITEM_TYPE) {
+			// fork 0.3.4: its own step between the tool steps, like the user's interjections
+			flushDetails();
+			displayItems.push({
+				type: 'compaction',
+				id: `compaction-${item.id ?? index}`,
+				kind: item.kind === 'cut' ? 'cut' : 'summary',
+				status: String(item.status ?? ''),
+				n: positiveNumber(item.n),
+				conv: typeof item.conv === 'string' ? item.conv : null,
+				reason: typeof item.reason === 'string' ? item.reason : '',
+				seconds: positiveNumber(item.seconds),
+				dropped: positiveNumber(item.dropped_steps)
+			});
 			return;
 		}
 

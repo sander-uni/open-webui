@@ -52,6 +52,13 @@
 	import TagSelector from '$lib/components/workspace/common/TagSelector.svelte';
 
 	import ModelItem from './ModelItem.svelte';
+	import {
+		managedId,
+		managerBlock,
+		managerState,
+		refreshManagerState
+	} from '$lib/components/model-manager/state'; // fork
+	import { unloadManagedModel } from '$lib/apis/model-manager'; // fork 0.3.4
 
 	const i18n: any = getContext('i18n');
 	const dispatch = createEventDispatcher();
@@ -384,7 +391,8 @@
 		}
 
 		// Set the virtual scroll position so the selected item is rendered and centered
-		const targetScrollTop = Math.max(0, selectedModelIdx * ITEM_HEIGHT - 128 + ITEM_HEIGHT / 2);
+		// fork round 4: cost rows wrap; center the rendered DOM node below.
+		const targetScrollTop = managerCostRows ? 0 : Math.max(0, selectedModelIdx * ITEM_HEIGHT - 128 + ITEM_HEIGHT / 2);
 		listScrollTop = targetScrollTop;
 
 		await tick();
@@ -408,6 +416,12 @@
 	};
 
 	const selectItem = (item, index: number) => {
+		// fork: the local model manager is loading or has another model pinned
+		const blocked = managerBlock(item?.model);
+		if (blocked) {
+			toast.info(blocked);
+			return;
+		}
 		selectedModelIdx = index;
 
 		if (values) {
@@ -788,6 +802,44 @@
 	let showDeleteConfirm = false;
 	let deleteModelTarget: any = null;
 
+	// fork 0.3.4: Unload from the More menu puts the manager's loaded model away.
+	let showManagerUnloadConfirm = false;
+	let managerUnloadTarget: {
+		id: string;
+		inflight: number;
+		pinned: boolean;
+		reload: string;
+	} | null = null;
+
+	const managerUnloadHandler = (model: any) => {
+		const state = $managerState;
+		const id = managedId(model, state);
+		if (!state || !id || state.model !== id) return;
+		show = false;
+		managerUnloadTarget = {
+			id,
+			inflight: state.inflight ?? 0,
+			pinned: !!state.pinned,
+			reload: state.ux?.models?.[id]?.reload_text ?? ''
+		};
+		showManagerUnloadConfirm = true;
+	};
+
+	const confirmManagerUnload = async () => {
+		const target = managerUnloadTarget;
+		managerUnloadTarget = null;
+		if (!target) return;
+		const pending = toast.loading($i18n.t('Putting {{model}} away…', { model: target.id }));
+		try {
+			// 0.3.5 (review C14): only if this model is still the loaded one
+			await unloadManagedModel(localStorage.token, target.inflight > 0, target.id);
+			toast.success($i18n.t('{{model}} was put away.', { model: target.id }), { id: pending });
+		} catch (error) {
+			toast.error(String(error), { id: pending });
+		}
+		refreshManagerState();
+	};
+
 	const deleteModelHandler = async (model: any) => {
 		show = false;
 		deleteModelTarget = model;
@@ -865,8 +917,11 @@
 		};
 	};
 
-	$: visibleStart = Math.max(0, Math.floor(listScrollTop / ITEM_HEIGHT) - OVERSCAN);
-	$: visibleEnd = Math.min(
+	// fork round 4: fixed 32px virtualization cannot position wrapping cost rows.
+	// The small managed-model list renders fully; other lists keep upstream virtualization.
+	$: managerCostRows = !!$managerState?.ux && filteredItems.some((item) => !!managedId(item.model, $managerState));
+	$: visibleStart = managerCostRows ? 0 : Math.max(0, Math.floor(listScrollTop / ITEM_HEIGHT) - OVERSCAN);
+	$: visibleEnd = managerCostRows ? filteredItems.length : Math.min(
 		filteredItems.length,
 		Math.ceil((listScrollTop + listViewportHeight) / ITEM_HEIGHT) + OVERSCAN
 	);
@@ -880,6 +935,27 @@
 	})}
 	on:confirm={() => {
 		confirmDeleteModel();
+	}}
+/>
+
+<!-- fork 0.3.4 -->
+<ConfirmDialog
+	bind:show={showManagerUnloadConfirm}
+	title={managerUnloadTarget?.inflight
+		? $i18n.t('Unload while a request is running?')
+		: $i18n.t('Put this model away?')}
+	message={managerUnloadTarget?.inflight
+		? $i18n.t('{{count}} request(s) are still running on {{model}}. Unloading now cuts them off.', {
+				count: managerUnloadTarget.inflight,
+				model: managerUnloadTarget.id
+			})
+		: `${managerUnloadTarget?.reload || $i18n.t('The next message will need a fresh start, which can take several minutes.')}${managerUnloadTarget?.pinned ? ` ${$i18n.t('This also removes its pin.')}` : ''}`}
+	confirmLabel={$i18n.t('Unload')}
+	on:confirm={() => {
+		confirmManagerUnload();
+	}}
+	on:cancel={() => {
+		managerUnloadTarget = null;
 	}}
 />
 
@@ -1081,6 +1157,7 @@
 										value={primaryValue}
 										{pinModelHandler}
 										{unloadModelHandler}
+										{managerUnloadHandler}
 										{deleteModelHandler}
 										{selectionOnly}
 										{compareEnabled}

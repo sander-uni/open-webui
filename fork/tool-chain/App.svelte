@@ -1,0 +1,375 @@
+<script lang="ts">
+	import { onMount, setContext, tick } from 'svelte';
+	import { writable } from 'svelte/store';
+	import english from '../../src/lib/i18n/locales/en-US/translation.json';
+	import CustomSettings from '../../src/lib/components/admin/Settings/CustomSettings.svelte';
+	import { getCustomSettings } from '../../src/lib/apis/custom-settings';
+	import StructuredOutputRenderer from '../../src/lib/components/chat/Messages/StructuredOutputRenderer.svelte';
+	import { settings, user, config } from '../../src/lib/stores';
+	import {
+		applyResponseStreamEvent,
+		getOutputText,
+		type OutputItem
+	} from '../../src/lib/components/chat/Messages/structuredOutput';
+
+	setContext(
+		'i18n',
+		writable({
+			language: 'en-US',
+			t: (key: string, values: Record<string, unknown> = {}) =>
+				((english as Record<string, string>)[key] || key).replace(/\{\{(\w+)\}\}/g, (_, name) =>
+					String(values[name] ?? name)
+				)
+		})
+	);
+	settings.set({
+		// ?collapsed starts with tool chains collapsed, Open WebUI's default.
+		expandDetails: !new URLSearchParams(location.search).has('collapsed'),
+		detectArtifacts: false,
+		renderMarkdownInAssistantMessages: false
+	});
+	user.set({ id: 'fixture', name: 'Fixture', role: 'admin' } as any);
+	config.set({ features: {} } as any);
+
+	const collision = new URLSearchParams(location.search).has('collision');
+	const demoZoom = new URLSearchParams(location.search).has('zoom');
+	const count = collision ? 30 : 2000;
+	let output: OutputItem[] = Array.from({ length: count }, (_, index) => [
+		{
+			type: 'reasoning',
+			id: `r${index}`,
+			status: 'completed',
+			duration: 1,
+			content: [{ text: `Verify tool step ${index + 1}.` }]
+		},
+		{
+			type: 'function_call',
+			id: `c${index}`,
+			call_id: `c${index}`,
+			name: 'run_command',
+			status: 'completed',
+			arguments: JSON.stringify({ step: index + 1, command: `check-step-${index + 1}` })
+		},
+		{
+			type: 'function_call_output',
+			id: `o${index}`,
+			call_id: `c${index}`,
+			output: [
+				{
+					type: 'input_text',
+					text: JSON.stringify({ success: true, stdout: `Result for step ${index + 1}.` })
+				}
+			]
+		}
+	]).flat();
+	// ?notes adds a short text line after every round, like a real agent run; each line
+	// starts a new collapsible group.
+	if (new URLSearchParams(location.search).has('notes')) {
+		output = output.flatMap((item, index) =>
+			item.type === 'function_call_output'
+				? [
+						item,
+						{
+							type: 'message',
+							id: `note-${index}`,
+							content: [{ type: 'output_text', text: `Checked ${item.call_id}.` }]
+						}
+					]
+				: [item]
+		);
+	}
+	output.push({
+		type: 'message',
+		id: collision ? 'detail-0' : 'live',
+		content: [
+			{ type: 'output_text', text: collision ? 'Collision test message' : 'Live response: ' }
+		],
+		status: 'in_progress'
+	});
+	let messageId = 'fixture-message';
+	let tokens = 0;
+	let streaming = false;
+	let interval: ReturnType<typeof setInterval>;
+	let scrollContainer: HTMLDivElement;
+	let savedHash = '';
+	let shownSteps = 0;
+	let hiddenSteps = 0;
+	let showSettings = false;
+
+	async function refreshSnapshot() {
+		savedHash = getOutputText(output);
+		output = JSON.parse(JSON.stringify(output));
+		messageId += '-refresh';
+		await tick();
+	}
+
+	function pinApproval() {
+		output = output
+			.filter((item) => item.id !== 'o0')
+			.map((item) => (item.id === 'c0' ? { ...item, status: 'pending' } : item));
+	}
+
+	function appendTokens() {
+		if (streaming) return;
+		streaming = true;
+		interval = setInterval(() => {
+			output = applyResponseStreamEvent(output, {
+				type: 'response.output_text.delta',
+				item_id: 'live',
+				content_index: 0,
+				delta: `token-${tokens++} `
+			});
+			if (tokens >= 150) {
+				clearInterval(interval);
+				streaming = false;
+			}
+		}, 1000 / 150);
+	}
+
+	function appendRound() {
+		const index = output.length;
+		output = [
+			...output,
+			{
+				type: 'reasoning',
+				id: `new-r${index}`,
+				status: 'completed',
+				content: [{ text: 'New round after paging.' }]
+			},
+			{
+				type: 'function_call',
+				id: `new-c${index}`,
+				call_id: `new-c${index}`,
+				name: 'new_round',
+				status: 'completed',
+				arguments: '{}'
+			},
+			{
+				type: 'function_call_output',
+				call_id: `new-c${index}`,
+				output: [{ text: 'New round retained.' }]
+			}
+		];
+	}
+
+	async function mark(label: string) {
+		if (!new URLSearchParams(location.search).has('record')) return;
+		await new Promise<void>((resolve) =>
+			requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+		);
+		const response = await fetch('/__demo_mark', { method: 'POST', body: label });
+		if (!response.ok) throw new Error(`Mark ${label} failed`);
+	}
+
+	onMount(() => {
+		localStorage.token = 'fixture-admin';
+		const updateStats = () => {
+			const pager = document.querySelector<HTMLElement>('.tool-chain-window');
+			const total = Number(pager?.dataset.totalSteps ?? 0);
+			hiddenSteps = Number(pager?.dataset.hiddenSteps ?? 0);
+			shownSteps = total - hiddenSteps;
+		};
+		const observer = new MutationObserver(updateStats);
+		observer.observe(scrollContainer, { childList: true, subtree: true, attributes: true });
+		updateStats();
+		void getCustomSettings(localStorage.token)
+			.then((custom_settings) => {
+				if (collision) custom_settings.tool_chain_display.page_size = 10;
+				config.update((current) => ({ ...current, custom_settings }) as any);
+				return tick();
+			})
+			.then(() => mark('ready'));
+		return () => {
+			observer.disconnect();
+			clearInterval(interval);
+		};
+	});
+</script>
+
+<main>
+	<header>
+		<h1>OpenWebUI · tool-chain paging</h1>
+		<p>
+			Production renderer · {count.toLocaleString()} retained tool calls · {shownSteps} displayed steps
+			· {hiddenSteps} earlier steps hidden
+			{#if demoZoom}
+				· Demo zoom 65%{/if}
+		</p>
+		<div class="controls">
+			<button on:click={appendTokens}>Stream 150 tokens</button>
+			<button on:click={appendRound}>Append tool round</button>
+			<button on:click={pinApproval}>Pin oldest approval</button>
+			<button on:click={refreshSnapshot}>Reload saved snapshot</button>
+			<button on:click={() => (showSettings = !showSettings)}>Admin: Custom Settings</button>
+		</div>
+		<p data-testid="state">
+			Retained output items: {output.length} · Streamed tokens: {tokens} · Snapshot text preserved: {savedHash
+				? getOutputText(output) === savedHash
+				: 'not checked'}
+		</p>
+	</header>
+	<div class="scroll-container" id="messages-container" bind:this={scrollContainer}>
+		<div style={demoZoom ? 'zoom: 0.65' : undefined}>
+			<StructuredOutputRenderer
+				id="fixture"
+				chatId="fixture-chat"
+				{messageId}
+				{output}
+				done={false}
+				save={true}
+				renderMarkdown={false}
+				allowEmbeds={false}
+			/>
+		</div>
+	</div>
+	{#if showSettings}
+		<aside aria-label="Admin Custom Settings">
+			<button class="close-settings" on:click={() => (showSettings = false)}>Close</button>
+			<CustomSettings />
+		</aside>
+	{/if}
+</main>
+
+<style>
+	:global(body) {
+		margin: 0;
+		background: #f7f8fa;
+		color: #171717;
+		font-family: Arial, sans-serif !important;
+	}
+	main {
+		padding: 24px;
+		max-width: 1100px;
+		margin: auto;
+	}
+	h1 {
+		font-size: 22px;
+		font-weight: 600;
+		margin-bottom: 8px;
+	}
+	p {
+		font-size: 14px;
+		margin: 8px 0;
+	}
+	.controls {
+		display: flex;
+		gap: 10px;
+		margin: 14px 0;
+	}
+	aside {
+		position: fixed;
+		right: 24px;
+		top: 190px;
+		width: 450px;
+		height: 470px;
+		padding: 16px;
+		background: white;
+		border: 1px solid #cbd5e1;
+		box-shadow: 0 4px 24px #0002;
+		border-radius: 10px;
+		z-index: 10;
+	}
+	.close-settings {
+		position: absolute;
+		right: 16px;
+		top: 16px;
+	}
+	:global(aside form) {
+		display: flex;
+		height: 100%;
+		flex-direction: column;
+		gap: 12px;
+	}
+	:global(aside h2) {
+		font-size: 16px;
+		margin: 0;
+	}
+	:global(aside fieldset) {
+		border: none;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 18px;
+	}
+	:global(aside fieldset > div > div),
+	:global(aside fieldset > div:last-of-type) {
+		display: flex;
+		justify-content: space-between;
+	}
+	:global(aside [role='switch']) {
+		width: 38px;
+		height: 22px;
+		border-radius: 12px;
+		background: #d1d5db;
+		border: none;
+		cursor: pointer;
+	}
+	:global(aside [role='switch'][aria-checked='true']) {
+		background: #2563eb;
+	}
+	:global(aside input) {
+		display: block;
+		width: 90px;
+		padding: 6px;
+		margin: 8px 0;
+	}
+	:global(aside [type='submit']) {
+		margin-top: auto;
+		padding: 8px 18px;
+		cursor: pointer;
+	}
+	:global(aside nav button) {
+		padding: 6px;
+		border: 1px solid #cbd5e1;
+		background: #eff6ff;
+	}
+	.controls button {
+		border: 1px solid #cbd5e1;
+		padding: 8px 12px;
+		border-radius: 6px;
+		background: white;
+		font-size: 13px;
+	}
+	.scroll-container {
+		height: 450px;
+		overflow-y: auto;
+		border: 1px solid #cbd5e1;
+		border-radius: 10px;
+		background: white;
+		padding: 18px;
+		margin-top: 15px;
+	}
+	:global(.tool-chain-page-boundary button) {
+		margin: 8px;
+		padding: 6px;
+		cursor: pointer;
+	}
+	:global(.tool-chain-page-boundary > div > span) {
+		margin-right: 14px;
+	}
+	:global(svg) {
+		width: 16px;
+		height: 16px;
+		display: inline-block;
+	}
+	:global(.shimmer) {
+		color: #2563eb;
+	}
+	:global([class*='text-red']) {
+		color: #dc2626;
+	}
+	:global([class*='text-emerald']) {
+		color: #059669;
+	}
+	:global(.scroll-container button),
+	:global(.scroll-container [role='button']) {
+		cursor: pointer;
+	}
+	:global(.scroll-container pre) {
+		white-space: pre-wrap;
+		font-size: 12px;
+	}
+	:global(.scroll-container [class*='space-y']) {
+		margin: 10px 0;
+	}
+</style>

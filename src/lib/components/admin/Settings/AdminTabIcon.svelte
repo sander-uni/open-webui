@@ -1,7 +1,10 @@
 <script lang="ts">
+	import Grid from '$lib/components/icons/Grid.svelte';
 	import CodeBracket from '$lib/components/icons/CodeBracket.svelte';
 	import BarsArrowUp from '$lib/components/icons/BarsArrowUp.svelte';
 	import Computer from '$lib/components/icons/Computer.svelte';
+	import AdjustmentsHorizontal from '$lib/components/icons/AdjustmentsHorizontal.svelte'; // fork 0.3.6
+	import DocumentChartBar from '$lib/components/icons/DocumentChartBar.svelte'; // fork 0.3.6
 	import Database from '$lib/components/icons/Database.svelte';
 	import Document from '$lib/components/icons/Document.svelte';
 	import GlobeAlt from '$lib/components/icons/GlobeAlt.svelte';
@@ -19,7 +22,7 @@
 	export let strokeWidth = '2';
 </script>
 
-{#if id === 'general'}
+{#if id === 'general' || id === 'custom-settings'}
 	<SettingsAlt {className} {strokeWidth} />
 {:else if id === 'authentication'}
 	<Lock {className} {strokeWidth} />
@@ -51,6 +54,12 @@
 			d="M4 11.5v4C4 17.43 7.58 19 12 19s8-1.57 8-3.5v-4"
 		/>
 	</svg>
+{:else if id === 'model-manager'}
+	<Computer {className} {strokeWidth} />
+{:else if id === 'context-proxy'}
+	<AdjustmentsHorizontal {className} {strokeWidth} />
+{:else if id === 'run-logger'}
+	<DocumentChartBar {className} {strokeWidth} />
 {:else if id === 'subagents'}
 	<UserCircle {className} {strokeWidth} />
 {:else if id === 'evaluations'}
@@ -71,6 +80,8 @@
 	<BarsArrowUp {className} {strokeWidth} />
 {:else if id === 'integrations'}
 	<WrenchAlt {className} {strokeWidth} />
+{:else if id === 'apps'}
+	<Grid {className} {strokeWidth} />
 {:else if id === 'documents'}
 	<Document {className} {strokeWidth} />
 {:else if id === 'web'}

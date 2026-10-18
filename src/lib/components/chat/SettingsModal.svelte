@@ -49,9 +49,13 @@
 	import AdminConnections from '$lib/components/admin/Settings/Connections.svelte';
 	import AdminModels from '$lib/components/admin/Settings/Models.svelte';
 	import AdminSubagents from '$lib/components/admin/Settings/Subagents.svelte';
+	import AdminCustomSettings from '$lib/components/admin/Settings/CustomSettings.svelte';
+	import AdminModelManager from '$lib/components/admin/Settings/ModelManager.svelte'; // fork
+	import AdminStackSettings from '$lib/components/admin/Settings/StackSettings.svelte'; // fork 0.3.6
 	import AdminEvaluations from '$lib/components/admin/Settings/Evaluations.svelte';
 	import AdminAnalytics from '$lib/components/admin/Analytics.svelte';
 	import AdminIntegrations from '$lib/components/admin/Settings/Integrations.svelte';
+	import AdminApps from '$lib/components/admin/Settings/Apps.svelte';
 	import AdminDocuments from '$lib/components/admin/Settings/Documents.svelte';
 	import AdminWebSearch from '$lib/components/admin/Settings/WebSearch.svelte';
 	import AdminCodeExecution from '$lib/components/admin/Settings/CodeExecution.svelte';
@@ -159,10 +163,15 @@
 		'admin:general': $i18n.t('System'),
 		'admin:authentication': $i18n.t('System'),
 		'admin:interface': $i18n.t('System'),
+		'admin:custom-settings': $i18n.t('System'),
 		'admin:connections': $i18n.t('AI'),
 		'admin:models': $i18n.t('AI'),
 		'admin:subagents': $i18n.t('AI'),
+		'admin:model-manager': $i18n.t('AI'), // fork
+		'admin:context-proxy': $i18n.t('AI'), // fork 0.3.6
+		'admin:run-logger': $i18n.t('AI'), // fork 0.3.6
 		'admin:integrations': $i18n.t('Tools'),
+		'admin:apps': $i18n.t('Tools'),
 		'admin:documents': $i18n.t('Tools'),
 		'admin:audio': $i18n.t('Tools'),
 		'admin:images': $i18n.t('Tools'),
@@ -285,6 +294,12 @@
 			searchPrefixes: ['settings.admin.interface.', 'settings.personal.general.parameters.']
 		},
 		{
+			id: 'admin:custom-settings',
+			titleKey: 'settings.admin.custom.title',
+			title: $i18n.t('settings.admin.custom.title'),
+			searchPrefixes: ['settings.admin.custom.']
+		},
+		{
 			id: 'admin:connections',
 			titleKey: 'settings.admin.connections.title',
 			title: $i18n.t('settings.admin.connections.title'),
@@ -302,11 +317,37 @@
 			title: $i18n.t('settings.admin.subagents.title'),
 			searchPrefixes: ['settings.admin.subagents.']
 		},
+		// fork: local model manager
+		{
+			id: 'admin:model-manager',
+			titleKey: 'Model Manager',
+			title: $i18n.t('Model Manager'),
+			searchPrefixes: []
+		},
+		// fork 0.3.6: every setting of the context proxy and the run logger
+		{
+			id: 'admin:context-proxy',
+			titleKey: 'Context Proxy',
+			title: $i18n.t('Context Proxy'),
+			searchPrefixes: []
+		},
+		{
+			id: 'admin:run-logger',
+			titleKey: 'Run Logger',
+			title: $i18n.t('Run Logger'),
+			searchPrefixes: []
+		},
 		{
 			id: 'admin:integrations',
 			titleKey: 'settings.admin.integrations.title',
 			title: $i18n.t('settings.admin.integrations.title'),
 			searchPrefixes: ['settings.admin.integrations.']
+		},
+		{
+			id: 'admin:apps',
+			titleKey: 'Apps',
+			title: $i18n.t('Apps'),
+			searchPrefixes: []
 		},
 		{
 			id: 'admin:documents',
@@ -408,7 +449,9 @@
 		return (
 			$user?.role === 'admin' ? [...personalSettings, ...administratorTabs] : personalSettings
 		).filter(
-			(tab) => tab.id !== 'admin:analytics' || ($config?.features?.enable_admin_analytics ?? true)
+			(tab) =>
+				(tab.id !== 'admin:analytics' || ($config?.features?.enable_admin_analytics ?? true)) &&
+				(tab.id !== 'admin:apps' || $config?.features?.enable_apps)
 		);
 	};
 
@@ -865,12 +908,22 @@
 				<AdminModels bind:tabState />
 			{:else if selectedTab === 'admin:subagents'}
 				<AdminSubagents />
+			{:else if selectedTab === 'admin:custom-settings'}
+				<AdminCustomSettings />
+			{:else if selectedTab === 'admin:model-manager'}
+				<AdminModelManager />
+			{:else if selectedTab === 'admin:context-proxy'}
+				<AdminStackSettings service="ctxproxy" />
+			{:else if selectedTab === 'admin:run-logger'}
+				<AdminStackSettings service="agentlog" />
 			{:else if selectedTab === 'admin:evaluations'}
 				<AdminEvaluations />
 			{:else if selectedTab === 'admin:analytics'}
 				<AdminAnalytics />
 			{:else if selectedTab === 'admin:integrations'}
 				<AdminIntegrations {saveSettings} />
+			{:else if selectedTab === 'admin:apps'}
+				<AdminApps />
 			{:else if selectedTab === 'admin:documents'}
 				<AdminDocuments on:save={adminConfigSaveHandler} />
 			{:else if selectedTab === 'admin:web'}

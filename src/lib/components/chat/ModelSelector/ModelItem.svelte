@@ -13,6 +13,7 @@
 	import ArrowUpTray from '$lib/components/icons/ArrowUpTray.svelte';
 	import Check from '$lib/components/icons/Check.svelte';
 	import ModelItemMenu from './ModelItemMenu.svelte';
+	import { managedId, managerBlock, managerState } from '$lib/components/model-manager/state'; // fork
 	import EllipsisHorizontal from '$lib/components/icons/EllipsisHorizontal.svelte';
 	import { toast } from 'svelte-sonner';
 	import Tag from '$lib/components/icons/Tag.svelte';
@@ -28,6 +29,7 @@
 	export let compareEnabled = false;
 
 	export let unloadModelHandler: (model: any) => void = () => {};
+	export let managerUnloadHandler: (model: any) => void = () => {}; // fork 0.3.4
 	export let pinModelHandler: (modelId: string) => void = () => {};
 	export let deleteModelHandler: (model: any) => void = () => {};
 	export let selectionOnly = false;
@@ -52,13 +54,23 @@
 
 	let showMenu = false;
 	$: isSelected = compareEnabled ? selectedValues.includes(item.value) : value === item.value;
+	// fork: local model manager state for this model
+	$: mmId = managedId(item.model, $managerState);
+	$: mmBlocked = managerBlock(item.model, $managerState);
+	// fork 0.3.4: "Unload" in the More menu of the model the manager has loaded (admins)
+	$: mmCanUnload =
+		$user?.role === 'admin' &&
+		!!mmId &&
+		$managerState?.phase === 'ready' &&
+		$managerState?.model === mmId;
 </script>
 
+<!-- fork round 4: variable height lets the pre-send cost wrap on a phone. -->
 <button
 	role="option"
 	aria-selected={isSelected}
-	aria-label={$i18n.t('Select {{modelName}} model', { modelName: item.label })}
-	class="focus-ring group/item flex h-8 w-full cursor-pointer select-none items-center rounded-xl px-2 text-left text-[0.8125rem] font-normal text-gray-700 outline-hidden transition-colors duration-75 dark:text-gray-100 {($settings?.highContrastMode ??
+	aria-label={`${$i18n.t('Select {{modelName}} model', { modelName: item.label })}${mmId && $managerState?.ux?.models?.[mmId] ? `: ${$managerState.ux.models[mmId].primary}` : ''}${mmBlocked ? ` ${mmBlocked}` : ''}`}
+	class="focus-ring group/item flex min-h-8 h-auto py-1 w-full cursor-pointer select-none items-center rounded-xl px-2 text-left text-[0.8125rem] font-normal text-gray-700 outline-hidden transition-colors duration-75 dark:text-gray-100 {($settings?.highContrastMode ??
 	false)
 		? 'hover:bg-gray-200 dark:hover:bg-gray-800'
 		: 'hover:bg-gray-50/40 dark:hover:bg-gray-800/40'} {index === selectedModelIdx &&
@@ -70,7 +82,9 @@
 		? ($settings?.highContrastMode ?? false)
 			? 'bg-gray-200 dark:bg-gray-800'
 			: 'bg-gray-50/70 dark:bg-gray-800/60'
-		: ''}"
+		: ''} {mmBlocked ? 'cursor-not-allowed opacity-40' : ''}"
+	aria-disabled={mmBlocked ? 'true' : undefined}
+	title={mmBlocked ?? undefined}
 	data-arrow-selected={index === selectedModelIdx}
 	data-value={item.value}
 	on:click={() => {
@@ -94,6 +108,13 @@
 			</div>
 		{/if} -->
 
+		<!-- fork round 4: readable cost before sending, including disabled choices. Short line
+		     under the name; the full explanation is under the picker once the model is chosen. -->
+		{#if mmId && $managerState?.ux?.models?.[mmId]}
+			<div class="order-last whitespace-normal break-words pl-6 text-[0.6875rem] text-gray-500 dark:text-gray-400">
+				{$managerState.ux.models[mmId].primary}
+			</div>
+		{/if}
 		<div class="flex items-center gap-2 overflow-hidden">
 			<div class="flex items-center min-w-fit">
 				<Tooltip content={$user?.role === 'admin' ? (item?.value ?? '') : ''} placement="top-start">
@@ -308,6 +329,7 @@
 				{pinModelHandler}
 				{deleteModelHandler}
 				{onEdit}
+				managerUnload={mmCanUnload ? () => managerUnloadHandler(item.model) : null}
 				copyLinkHandler={() => {
 					copyLinkHandler(item.model);
 				}}
