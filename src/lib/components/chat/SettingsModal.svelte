@@ -52,6 +52,7 @@
 	import AdminCustomSettings from '$lib/components/admin/Settings/CustomSettings.svelte';
 	import AdminModelManager from '$lib/components/admin/Settings/ModelManager.svelte'; // fork
 	import AdminStackSettings from '$lib/components/admin/Settings/StackSettings.svelte'; // fork 0.3.6
+	import AdminMiner from '$lib/components/admin/Settings/Miner.svelte'; // fork 0.3.7
 	import AdminEvaluations from '$lib/components/admin/Settings/Evaluations.svelte';
 	import AdminAnalytics from '$lib/components/admin/Analytics.svelte';
 	import AdminIntegrations from '$lib/components/admin/Settings/Integrations.svelte';
@@ -170,6 +171,7 @@
 		'admin:model-manager': $i18n.t('AI'), // fork
 		'admin:context-proxy': $i18n.t('AI'), // fork 0.3.6
 		'admin:run-logger': $i18n.t('AI'), // fork 0.3.6
+		'admin:miner': $i18n.t('AI'), // fork 0.3.7
 		'admin:integrations': $i18n.t('Tools'),
 		'admin:apps': $i18n.t('Tools'),
 		'admin:documents': $i18n.t('Tools'),
@@ -335,6 +337,13 @@
 			id: 'admin:run-logger',
 			titleKey: 'Run Logger',
 			title: $i18n.t('Run Logger'),
+			searchPrefixes: []
+		},
+		// fork 0.3.7: the background GPU jobs (Windows PC and toolbox PC)
+		{
+			id: 'admin:miner',
+			titleKey: 'Miner',
+			title: $i18n.t('Miner'),
 			searchPrefixes: []
 		},
 		{
@@ -916,6 +925,8 @@
 				<AdminStackSettings service="ctxproxy" />
 			{:else if selectedTab === 'admin:run-logger'}
 				<AdminStackSettings service="agentlog" />
+			{:else if selectedTab === 'admin:miner'}
+				<AdminMiner />
 			{:else if selectedTab === 'admin:evaluations'}
 				<AdminEvaluations />
 			{:else if selectedTab === 'admin:analytics'}

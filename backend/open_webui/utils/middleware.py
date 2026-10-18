@@ -162,6 +162,7 @@ from open_webui.utils.tools import (
     get_tools,
     get_updated_tool_function,
 )
+from open_webui.utils.toolbox_hold import toolbox_hold  # fork 0.3.7
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL)
@@ -2687,12 +2688,14 @@ async def process_chat_payload(request, form_data, user, metadata, model):
 
                         for tool_spec in tool_specs:
 
-                            async def make_tool_function(client, function_name):
+                            async def make_tool_function(client, function_name, server_id=server_id):
                                 async def tool_function(**kwargs):
-                                    return await client.call_tool(
-                                        function_name,
-                                        function_args=kwargs,
-                                    )
+                                    # fork 0.3.7: GPU tools wait for the toolbox miner to pause
+                                    async with toolbox_hold(server_id, function_name, metadata.get('chat_id')):
+                                        return await client.call_tool(
+                                            function_name,
+                                            function_args=kwargs,
+                                        )
 
                                 return tool_function
 

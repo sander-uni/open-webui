@@ -238,6 +238,12 @@ async def save_settings(request: Request, user=Depends(get_admin_user)):
     return await _call('POST', '/mm/settings', await request.json())
 
 
+@router.get('/miner')
+async def get_miner(user=Depends(get_admin_user)):
+    """fork 0.3.7: Admin Settings > Miner (the Windows and the toolbox miner, and their settings)."""
+    return await _call('GET', '/mm/miner')
+
+
 @router.get('/filter')
 async def get_filter(user=Depends(get_admin_user)):
     """The loading-status filter function from earlier versions of this page is retired: a reply

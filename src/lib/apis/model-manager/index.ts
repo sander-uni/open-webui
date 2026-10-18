@@ -45,6 +45,31 @@ export const saveModelManagerSettings = (
 
 export const getModelManagerFilter = (token: string) => call(token, 'GET', '/filter');
 
+// fork 0.3.7: Admin Settings > Miner.
+export type MinerView = {
+	windows: { enabled: boolean; folder: string | null; hold: boolean; failing: boolean; state: string | null; model: string | null };
+	toolbox: {
+		enabled: boolean;
+		target: string | null;
+		holding: boolean;
+		state: { state?: string; detail?: string; age_s?: number } | null;
+		active_calls: number;
+		release_in_s: number | null;
+		last_error: { code: string; message: string; t: number } | null;
+		tools: string[];
+		quiet_minutes: number;
+	};
+	settings: { toolbox_quiet_minutes: number; toolbox_tools: string[] };
+	events: { ts: string; event: string; [key: string]: unknown }[];
+};
+
+export const getMinerView = (token: string) => call(token, 'GET', '/miner') as Promise<MinerView>;
+
+export const saveMinerSettings = (
+	token: string,
+	settings: { toolbox_quiet_minutes?: number; toolbox_tools?: string[] }
+) => call(token, 'POST', '/settings', settings);
+
 // 0.3.2: speed and context figures of one chat, for the chat input.
 export type ChatStats = {
 	phase: 'none' | 'idle' | 'prefill' | 'decode' | 'compacting';
