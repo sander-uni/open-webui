@@ -103,18 +103,25 @@ def _saved_runtime() -> dict[str, str]:
     return envfile.parse(envfile.read(path)) if path else {}
 
 
-def _value(values: dict, key: str) -> str:
-    return values[key] if key in values else RUNTIME_KEYS[key]['default']
+def _value(values: dict, key: str, launch: dict | None = None) -> str:
+    """What the launcher will use at the next start: the file's value; else what the stack runs with
+    now (it came from the launcher's environment, which a restart keeps); else the launcher's default."""
+    if key in values:
+        return values[key]
+    if launch and launch.get(key):
+        return launch[key]
+    return RUNTIME_KEYS[key]['default']
 
 
 def model_api_url(values: dict, launch: dict) -> str | None:
     """The address start_webui.sh gives Open WebUI for the model, for these launcher values."""
-    proxy_on = _value(values, 'PROXY_ENABLED').lower() in TRUE
-    agentlog_on = proxy_on and _value(values, 'AGENTLOG_ENABLED').lower() in TRUE
+    v = lambda key: _value(values, key, launch)  # noqa: E731
+    proxy_on = v('PROXY_ENABLED').lower() in TRUE
+    agentlog_on = proxy_on and v('AGENTLOG_ENABLED').lower() in TRUE
     if agentlog_on:
-        return f"http://{_value(values, 'AGENTLOG_HOST')}:{_value(values, 'AGENTLOG_PORT')}/a/v1"
+        return f"http://{v('AGENTLOG_HOST')}:{v('AGENTLOG_PORT')}/a/v1"
     if proxy_on:
-        return f"http://{_value(values, 'PROXY_HOST')}:{_value(values, 'PROXY_PORT')}/v1"
+        return f"http://{v('PROXY_HOST')}:{v('PROXY_PORT')}/v1"
     mm = launch.get('MODELMGR_URL') or os.environ.get('MODEL_MANAGER_URL')
     return f'{mm.rstrip("/")}/v1' if mm else None
 
@@ -139,7 +146,7 @@ def _check_runtime(key: str, value: str, merged: dict, launch: dict) -> str | No
                 if launch.get(f'{name}_PORT')
             }
             other_service = 'AGENTLOG_PORT' if key == 'PROXY_PORT' else 'PROXY_PORT'
-            others['the other service'] = _value(merged, other_service)
+            others['the other service'] = _value(merged, other_service, launch)
             for name, port in others.items():
                 if str(port) == str(n):
                     label = name.lower() if name != 'the other service' else (
@@ -164,10 +171,11 @@ def _runtime_items(service: str) -> list[dict]:
     items = []
     for spec in RUNTIME[service]:
         k = spec['key']
-        value = _value(saved, k)
+        value = _value(saved, k, launch)
         running = launch.get(k)
+        source = 'file' if k in saved else 'environment' if running else 'default'
         item = {key: spec[key] for key in spec if key != 'replaces'}
-        item.update(group='connection', apply='start', value=value, source='file' if k in saved else 'default',
+        item.update(group='connection', apply='start', value=value, source=source,
                     in_file=k in saved, running=running,
                     pending=running is not None and value.strip().lower() != running.strip().lower())
         items.append(item)
