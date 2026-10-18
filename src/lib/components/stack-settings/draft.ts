@@ -40,9 +40,10 @@ export const changesFrom = (settings: StackSetting[], draft: Draft) => {
 	return out;
 };
 
-/** Saved with a value other than the default (the page offers "Reset"). */
+/** Saved in the settings file with a value other than the default (the page offers "Reset", which
+ * removes the line). Values the launcher sets, or that come from its environment, have no line to remove. */
 export const differsFromDefault = (s: StackSetting) =>
-	s.kind === 'secret' ? !!s.is_set : (s.in_file || s.source === 'environment') && !same(s, s.value, s.default);
+	isEditable(s) && (s.kind === 'secret' ? !!s.is_set : s.in_file && !same(s, s.value, s.default));
 
 export const matches = (s: StackSetting, query: string) => {
 	const q = query.trim().toLowerCase();

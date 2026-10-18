@@ -382,7 +382,7 @@
 														value={value}
 														on:input={(e) => set(s, e.currentTarget.value)}
 													/>
-													{#if s.unit}<span class="w-9 text-[0.6875rem] text-gray-400">{s.unit}</span>{/if}
+													{#if s.unit}<span class="w-14 whitespace-nowrap text-[0.6875rem] text-gray-400">{s.unit}</span>{/if}
 												</div>
 											{:else}
 												<input
@@ -416,6 +416,16 @@
 					</h3>
 					<p class="mb-2 text-[0.6875rem] text-gray-400 dark:text-gray-600">
 						{$i18n.t('The service ignores these lines. Removing them changes nothing, it only tidies the file.')}
+						{#if data.ignored.length > 1}
+							<button
+								type="button"
+								class="ml-1 text-gray-500 underline hover:text-gray-800 dark:hover:text-gray-200"
+								on:click={() =>
+									(removeLines =
+										removeLines.length === data?.ignored.length ? [] : (data?.ignored ?? []).map((l) => l.key))}
+								>{removeLines.length === data.ignored.length ? $i18n.t('Keep all') : $i18n.t('Remove all')}</button
+							>
+						{/if}
 					</p>
 					<div class="flex flex-col gap-1.5">
 						{#each data.ignored as line (line.key)}

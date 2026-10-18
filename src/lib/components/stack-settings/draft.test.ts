@@ -53,6 +53,9 @@ describe('stack settings drafts', () => {
 		expect(shownValue(x, { A: null })).toBe('5');
 		expect(differsFromDefault(x)).toBe(true);
 		expect(differsFromDefault(s({ key: 'A', value: '5', in_file: true, source: 'file' }))).toBe(false);
+		// from the launcher's environment, or set by the launcher: no line to remove, no Reset
+		expect(differsFromDefault(s({ key: 'P', value: '9098', default: '8098', source: 'environment' }))).toBe(false);
+		expect(differsFromDefault(s({ key: 'U', value: 'x', default: 'y', in_file: true, apply: 'launcher' }))).toBe(false);
 	});
 
 	it('search matches label, key, description and value', () => {
