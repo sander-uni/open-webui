@@ -392,6 +392,10 @@ async def lifespan(app: FastAPI):
     await validate_mfa_configuration()
     await initialize_runtime_config(app)
     await migrate_legacy_webhook_config()
+    # Fork 0.3.6: after a Context Proxy / Run Logger on/off or port change, the model connection follows
+    from open_webui.routers.stack_settings import apply_connection_switch
+
+    await apply_connection_switch()
     await publish_event(app, EVENTS.SYSTEM_STARTUP_STARTED, source='system')
 
     license_task = None
@@ -928,6 +932,10 @@ app.include_router(model_manager.router, prefix='/api/v1/model-manager', tags=['
 from open_webui.routers import interjections as interjections_router  # noqa: E402
 
 app.include_router(interjections_router.router, prefix='/api/v1/interjections', tags=['interjections'])
+# Fork 0.3.6: Admin Settings > Context Proxy and > Run Logger (routers/stack_settings.py)
+from open_webui.routers import stack_settings  # noqa: E402
+
+app.include_router(stack_settings.router, prefix='/api/v1/stack-settings', tags=['stack-settings'])
 
 # SCIM 2.0 API for identity management
 if ENABLE_SCIM:

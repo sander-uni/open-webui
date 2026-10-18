@@ -3,6 +3,8 @@
 	import CodeBracket from '$lib/components/icons/CodeBracket.svelte';
 	import BarsArrowUp from '$lib/components/icons/BarsArrowUp.svelte';
 	import Computer from '$lib/components/icons/Computer.svelte';
+	import AdjustmentsHorizontal from '$lib/components/icons/AdjustmentsHorizontal.svelte'; // fork 0.3.6
+	import DocumentChartBar from '$lib/components/icons/DocumentChartBar.svelte'; // fork 0.3.6
 	import Database from '$lib/components/icons/Database.svelte';
 	import Document from '$lib/components/icons/Document.svelte';
 	import GlobeAlt from '$lib/components/icons/GlobeAlt.svelte';
@@ -54,6 +56,10 @@
 	</svg>
 {:else if id === 'model-manager'}
 	<Computer {className} {strokeWidth} />
+{:else if id === 'context-proxy'}
+	<AdjustmentsHorizontal {className} {strokeWidth} />
+{:else if id === 'run-logger'}
+	<DocumentChartBar {className} {strokeWidth} />
 {:else if id === 'subagents'}
 	<UserCircle {className} {strokeWidth} />
 {:else if id === 'evaluations'}

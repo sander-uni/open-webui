@@ -51,6 +51,7 @@
 	import AdminSubagents from '$lib/components/admin/Settings/Subagents.svelte';
 	import AdminCustomSettings from '$lib/components/admin/Settings/CustomSettings.svelte';
 	import AdminModelManager from '$lib/components/admin/Settings/ModelManager.svelte'; // fork
+	import AdminStackSettings from '$lib/components/admin/Settings/StackSettings.svelte'; // fork 0.3.6
 	import AdminEvaluations from '$lib/components/admin/Settings/Evaluations.svelte';
 	import AdminAnalytics from '$lib/components/admin/Analytics.svelte';
 	import AdminIntegrations from '$lib/components/admin/Settings/Integrations.svelte';
@@ -167,6 +168,8 @@
 		'admin:models': $i18n.t('AI'),
 		'admin:subagents': $i18n.t('AI'),
 		'admin:model-manager': $i18n.t('AI'), // fork
+		'admin:context-proxy': $i18n.t('AI'), // fork 0.3.6
+		'admin:run-logger': $i18n.t('AI'), // fork 0.3.6
 		'admin:integrations': $i18n.t('Tools'),
 		'admin:apps': $i18n.t('Tools'),
 		'admin:documents': $i18n.t('Tools'),
@@ -319,6 +322,19 @@
 			id: 'admin:model-manager',
 			titleKey: 'Model Manager',
 			title: $i18n.t('Model Manager'),
+			searchPrefixes: []
+		},
+		// fork 0.3.6: every setting of the context proxy and the run logger
+		{
+			id: 'admin:context-proxy',
+			titleKey: 'Context Proxy',
+			title: $i18n.t('Context Proxy'),
+			searchPrefixes: []
+		},
+		{
+			id: 'admin:run-logger',
+			titleKey: 'Run Logger',
+			title: $i18n.t('Run Logger'),
 			searchPrefixes: []
 		},
 		{
@@ -896,6 +912,10 @@
 				<AdminCustomSettings />
 			{:else if selectedTab === 'admin:model-manager'}
 				<AdminModelManager />
+			{:else if selectedTab === 'admin:context-proxy'}
+				<AdminStackSettings service="ctxproxy" />
+			{:else if selectedTab === 'admin:run-logger'}
+				<AdminStackSettings service="agentlog" />
 			{:else if selectedTab === 'admin:evaluations'}
 				<AdminEvaluations />
 			{:else if selectedTab === 'admin:analytics'}
