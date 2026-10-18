@@ -4751,10 +4751,30 @@ async def streaming_chat_response_handler(response, ctx):
 
                     async def apply_compaction_event(event):
                         # fork 0.3.4: ctxproxy compacted the context before this request
-                        change = compaction_steps.apply(output, event, output_id)
+                        if isinstance(event, dict) and event.get('conv'):
+                            # 0.3.5 (review C1): the summary viewer of a temporary chat may open this key
+                            compaction_steps.remember_temporary_key(
+                                getattr(user, 'id', None), metadata.get('chat_id'), event.get('conv')
+                            )
+                        # 0.3.5 (review C2): during Continue, a step before the first new text would
+                        # stop full_output() merging that text into the continued message (the rebuilt
+                        # history would read "A\nB" instead of "AB"). Put it before that message.
+                        target, insert_at = output, None
+                        if (
+                            continuing
+                            and prior_output
+                            and prior_output[-1].get('type') == 'message'
+                            and all(item.get('type') == compaction_steps.ITEM_TYPE for item in output)
+                        ):
+                            target, insert_at = prior_output, len(prior_output) - 1
+                        change = compaction_steps.apply(target, event, output_id, insert_at=insert_at)
                         if change is None:
                             return
                         output_index, item, added = change
+                        if target is prior_output:
+                            # Continue sends the whole output with every event; no index to map.
+                            await emit_response_completion_event({'type': 'response.output_item.done', 'item': item.copy()})
+                            return
                         await emit_response_completion_event(
                             {
                                 'type': 'response.output_item.added' if added else 'response.output_item.done',
@@ -4837,7 +4857,16 @@ async def streaming_chat_response_handler(response, ctx):
                                 elif data.get('type', '').startswith('response.') or data.get('type', '') == 'error':
                                     response_data_type = data.get('type', '')
                                     response_data_is_delta = response_data_type.endswith('.delta')
-                                    output, response_metadata = handle_responses_streaming_event(data, output)
+                                    # fork 0.3.5 (review C12): provider indices and response.completed
+                                    # cover the provider's items only; keep compaction steps out of the
+                                    # reducer and in front of this round's provider output.
+                                    compaction_items, provider_output = compaction_steps.split(output)
+                                    provider_output, response_metadata = handle_responses_streaming_event(
+                                        data, provider_output
+                                    )
+                                    output = [*compaction_items, *provider_output]
+                                    if compaction_items and isinstance(data.get('output_index'), int):
+                                        data = {**data, 'output_index': data['output_index'] + len(compaction_items)}
 
                                     if not response_data_is_delta:
                                         await flush_pending_delta_data()
@@ -5708,6 +5737,8 @@ async def streaming_chat_response_handler(response, ctx):
                                 form_data,
                                 metadata,
                             )
+                            # fork 0.3.5: waiting messages go to the resumed reply (review C4)
+                            interjections.pause(interjection_run)
                         await event_emitter({'type': 'chat:completion', 'data': {'output': full_output()}})
                         return
                     elif ask_user_staged:
@@ -5745,6 +5776,7 @@ async def streaming_chat_response_handler(response, ctx):
                             form_data,
                             metadata,
                         )
+                        interjections.pause(interjection_run)  # fork 0.3.5: resumed reply delivers them
                         await event_emitter(
                             {
                                 'type': 'chat:completion',

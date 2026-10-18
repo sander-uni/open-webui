@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { sendInterjection, trackInterjections } from '$lib/components/interjections/state'; // fork 0.3.3
+	import {
+		acceptsInterjections,
+		keepUnsent,
+		sendInterjection,
+		syncInterjections,
+		trackInterjections
+	} from '$lib/components/interjections/state'; // fork 0.3.3 (0.3.5: sync, keepUnsent)
 	import type { TerminalContext } from '$lib/types';
 	import { v4 as uuidv4 } from 'uuid';
 	import { toast } from 'svelte-sonner';
@@ -2273,6 +2279,7 @@
 	};
 
 	$: trackInterjections($chatId, history); // fork 0.3.3: delivered, or back to the input
+	$: syncInterjections($chatId, history); // fork 0.3.5: what the server kept (also after a reload)
 
 	const onHistoryChange = (history) => {
 		if (history) {
@@ -3857,18 +3864,30 @@
 		// instead of the queue. A reply without tools takes none: Open WebUI queues it as before.
 		if (!bridgeRequest) {
 			const running = history.currentId ? history.messages[history.currentId] : null;
-			if (running?.role === 'assistant' && !running.done) {
+			if (running?.role === 'assistant' && !running.done && (await acceptsInterjections($chatId, running.id))) {
+				// fork 0.3.5 (review C8): take this draft out of the composer now, so typing or
+				// attaching during the upload wait / request is never erased afterwards.
+				const sentChat = $chatId;
+				const draftText = userPrompt ?? '';
+				const draftFiles = files;
+				messageInput?.setText('');
+				prompt = '';
+				files = [];
 				try {
-					if (await sendInterjection($chatId, running.id, userPrompt ?? '', files)) {
-						messageInput?.setText('');
-						prompt = '';
-						files = [];
+					if (await sendInterjection(sentChat, running.id, draftText, draftFiles, true)) {
 						return { status: 'rejected' };
 					}
 				} catch (e) {
 					toast.error(`${e}`);
+					keepUnsent(sentChat, draftText, draftFiles);
 					return { status: 'rejected' };
 				}
+				// The reply stopped taking messages meanwhile: Open WebUI's own queue takes it.
+				if ($chatId !== sentChat) {
+					keepUnsent(sentChat, draftText, draftFiles);
+					return { status: 'rejected' };
+				}
+				files = [...draftFiles, ...files];
 			}
 		}
 

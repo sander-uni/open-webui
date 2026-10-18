@@ -24,12 +24,18 @@
 		if (!items.length) return;
 		const text = items.map((i) => i.text).filter((t) => t.trim()).join('\n\n');
 		onRestore(text, items.flatMap((i) => i.files ?? []));
-		if (items.some((i) => i.reason === 'not_delivered')) {
-			notice =
+		let next = '';
+		if (items.some((i) => i.reason === 'not_sent')) {
+			next = 'Not sent: your message is back in the input.'; // fork 0.3.5
+		} else if (items.some((i) => i.reason === 'not_delivered')) {
+			next =
 				items.length > 1
 					? 'Not delivered: the reply finished before its next step. Your messages are back in the input.'
 					: 'Not delivered: the reply finished before its next step. Your message is back in the input.';
-			toast.info(notice);
+		}
+		if (next) {
+			notice = next;
+			toast.info(next);
 		}
 	};
 	const unsubscribe = returnedInterjections.subscribe((all) => {

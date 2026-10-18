@@ -61,3 +61,37 @@ describe('interjections in a reply', () => {
 		expect(new Set(items.map((i) => i.id)).size).toBe(items.length);
 	});
 });
+
+// fork 0.3.5 (review C11): the paged view splits groups where the full view does.
+import { selectOutputWindow } from './outputWindow';
+
+describe('paging around a delivered message', () => {
+	const noted = (id: string): OutputItem =>
+		({
+			type: 'function_call_output',
+			id: `o-${id}`,
+			call_id: id,
+			status: 'completed',
+			output: [{ type: 'input_text', text: 'ok' }],
+			interjections: [{ id: 'i1', text: 'Use port 9000.', files: [] }]
+		}) as OutputItem;
+	const output = [call('a'), noted('a'), call('b'), result('b')];
+
+	it('the note is a step and a boundary: the hidden call does not join the visible group', () => {
+		const one = selectOutputWindow(output, 1, { live: false });
+		expect(one.totalSteps).toBe(3);
+		expect(one.hiddenRun).toBeNull();
+		expect(one.hiddenTotals.toolCallCount).toBe(1);
+		expect(one.hiddenTotals.interjectionCount).toBe(1);
+		expect(buildWindowDisplayItems(one.output, one).map((i) => i.type)).toEqual(['detail_single']);
+	});
+
+	it('when the note is in view it shows between the groups, as in the full view', () => {
+		const two = selectOutputWindow(output, 2, { live: false });
+		expect(buildWindowDisplayItems(two.output, two).map((i) => i.type)).toEqual(['interjection', 'detail_single']);
+		const all = selectOutputWindow(output, Infinity, { live: false });
+		expect(buildWindowDisplayItems(all.output, all).map((i) => i.type)).toEqual(
+			buildOutputDisplayItems(output).map((i) => i.type)
+		);
+	});
+});

@@ -35,6 +35,20 @@ _OPERATION_TIMEOUT = aiohttp.ClientTimeout(total=_OPERATION_S, sock_connect=10)
 _SLOW_PATHS = ('/mm/cancel', '/mm/unload')
 
 
+def _error_message(data: Any) -> str | None:
+    """The readable message of a service error body, whatever its shape (0.3.5: a string or a
+    malformed `error` no longer raises)."""
+    if not isinstance(data, dict):
+        return None
+    error = data.get('error')
+    if isinstance(error, dict):
+        error = error.get('message')
+    if isinstance(error, str) and error.strip():
+        return error.strip()[:500]
+    detail = data.get('detail')
+    return detail.strip()[:500] if isinstance(detail, str) and detail.strip() else None
+
+
 async def _call(method: str, path: str, body: dict | None = None) -> Any:
     try:
         timeout = _OPERATION_TIMEOUT if path in _SLOW_PATHS else _TIMEOUT
@@ -45,8 +59,7 @@ async def _call(method: str, path: str, body: dict | None = None) -> Any:
                 except Exception:
                     data = {'error': {'message': (await resp.text())[:500]}}
                 if resp.status >= 400:
-                    message = (data.get('error') or {}).get('message') if isinstance(data, dict) else None
-                    raise HTTPException(status_code=resp.status, detail=message or f'HTTP {resp.status}')
+                    raise HTTPException(status_code=resp.status, detail=_error_message(data) or f'HTTP {resp.status}')
                 return data
     except HTTPException:
         raise
@@ -75,15 +88,32 @@ async def get_state(user=Depends(get_verified_user)):
 _TEMPORARY_PREFIXES = ('temporary:', 'local:')
 
 
+def _temporary_chat_owner(chat_id: str) -> str | None:
+    """0.3.5: the user whose browser session a temporary chat id names (upstream's own check for
+    temporary chats, as in /api/tasks/chat/{id}); None when that session is unknown."""
+    try:
+        from open_webui.socket.main import get_user_id_from_session_pool
+        from open_webui.utils.chat_id import get_temporary_chat_session_id
+    except Exception:  # pragma: no cover - always present in Open WebUI
+        return None
+    session_id = get_temporary_chat_session_id(chat_id)
+    return get_user_id_from_session_pool(session_id) if session_id else None
+
+
 @router.get('/chat-stats/{chat_id}')
 async def get_chat_stats(chat_id: str, user=Depends(get_verified_user)):
     """0.3.2: speed and context figures of one chat, for the chat input. The chat's owner and
     admins only; the manager keeps them per chat id."""
-    if user.role != 'admin' and not chat_id.startswith(_TEMPORARY_PREFIXES):
-        from open_webui.models.chats import Chats  # here, so this router imports on its own
+    if user.role != 'admin':
+        if chat_id.startswith(_TEMPORARY_PREFIXES):
+            # 0.3.5: a temporary chat is its owner's browser session, not anyone's (review C1)
+            if _temporary_chat_owner(chat_id) != user.id:
+                raise HTTPException(status_code=404, detail='Chat not found')
+        else:
+            from open_webui.models.chats import Chats  # here, so this router imports on its own
 
-        if await Chats.get_chat_by_id_and_user_id(chat_id, user.id) is None:
-            raise HTTPException(status_code=404, detail='Chat not found')
+            if await Chats.get_chat_by_id_and_user_id(chat_id, user.id) is None:
+                raise HTTPException(status_code=404, detail='Chat not found')
     return await _call('GET', f'/mm/chat-stats?chat_id={quote(chat_id, safe="")}')
 
 
@@ -107,9 +137,13 @@ def _compaction_key(output, n: int) -> str | None:
 async def get_compaction(chat_id: str, message_id: str, n: int, conv: str = '', user=Depends(get_verified_user)):
     """The note the model received in place of the steps compaction #n replaced, exactly as sent.
     The chat's owner and admins only. The conversation key comes from the stored reply (ctxproxy
-    reported it when it compacted); only temporary chats, which are never stored, pass it."""
+    reported it when it compacted). Temporary chats are never stored: the key the browser passes
+    must be one this server recorded for that user and chat when the compaction happened (0.3.5,
+    review C1: before, any well-formed key was accepted)."""
     if chat_id.startswith(_TEMPORARY_PREFIXES):
-        key = conv if _CONV_KEY.match(conv) else None
+        from open_webui.utils.compaction_steps import temporary_key_allowed
+
+        key = conv if _CONV_KEY.match(conv) and temporary_key_allowed(user.id, chat_id, conv) else None
     else:
         from open_webui.models.chats import Chats  # here, so this router imports on its own
 
@@ -132,8 +166,7 @@ async def get_compaction(chat_id: str, message_id: str, n: int, conv: str = '', 
             'Try again in a minute; if this continues, ask the admin to check the launcher.',
         )
     if status >= 400 or not isinstance(data, dict) or not isinstance(data.get('note'), str):
-        message = ((data or {}).get('error') or {}).get('message') if isinstance(data, dict) else None
-        raise HTTPException(status_code=404, detail=message or f'Compaction #{n} is no longer stored.')
+        raise HTTPException(status_code=404, detail=_error_message(data) or f'Compaction #{n} is no longer stored.')
     return {'n': n, 'note': data['note'], 'created': data.get('created')}
 
 
@@ -143,8 +176,13 @@ async def load_model(request: Request, user=Depends(get_admin_user)):
 
 
 @router.post('/cancel')
-async def cancel_load(user=Depends(get_admin_user)):
-    return await _call('POST', '/mm/cancel', {})
+async def cancel_load(request: Request, user=Depends(get_admin_user)):
+    # 0.3.5 (review C14): {"model": id} cancels only that preparation
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    return await _call('POST', '/mm/cancel', body if isinstance(body, dict) else {})
 
 
 @router.post('/unload')
@@ -155,6 +193,44 @@ async def unload_model(request: Request, user=Depends(get_admin_user)):
 @router.post('/pin')
 async def pin_model(request: Request, user=Depends(get_admin_user)):
     return await _call('POST', '/mm/pin', await request.json())
+
+
+@router.post('/visibility')
+async def set_visibility(request: Request, user=Depends(get_admin_user)):
+    """0.3.5 (review C15): show or hide a model in the picker by changing only its live `hidden`
+    flag, in one transaction that fails on a concurrent edit, instead of writing back a whole
+    model configuration read earlier. Upstream keeps `hidden` out of model history as well.
+    {"exists": false} when the model has no saved settings yet (the page then creates them)."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    if not isinstance(body, dict) or not isinstance(body.get('id'), str) or not isinstance(body.get('hidden'), bool):
+        raise HTTPException(status_code=400, detail='Send {"id": "<model id>", "hidden": true|false}.')
+    import time
+
+    from open_webui.internal.db import get_async_db_context
+    from open_webui.models.models import Model
+    from sqlalchemy import select, update
+
+    for _attempt in range(3):
+        async with get_async_db_context() as session:
+            current = (await session.execute(select(Model).filter_by(id=body['id']))).scalar_one_or_none()
+            if current is None:
+                return {'exists': False}
+            meta = dict(current.meta or {})
+            meta['hidden'] = body['hidden']
+            result = await session.execute(
+                update(Model)
+                .where(Model.id == current.id, Model.version_id == current.version_id)
+                .values(meta=meta, updated_at=int(time.time()))
+                .execution_options(synchronize_session=False)
+            )
+            if result.rowcount == 1:
+                await session.commit()
+                return {'exists': True, 'hidden': body['hidden']}
+            await session.rollback()
+    raise HTTPException(status_code=409, detail='The model was being changed at the same moment. Try again.')
 
 
 @router.post('/settings')

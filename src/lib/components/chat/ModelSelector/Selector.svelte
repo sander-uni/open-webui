@@ -831,7 +831,8 @@
 		if (!target) return;
 		const pending = toast.loading($i18n.t('Putting {{model}} away…', { model: target.id }));
 		try {
-			await unloadManagedModel(localStorage.token, target.inflight > 0);
+			// 0.3.5 (review C14): only if this model is still the loaded one
+			await unloadManagedModel(localStorage.token, target.inflight > 0, target.id);
 			toast.success($i18n.t('{{model}} was put away.', { model: target.id }), { id: pending });
 		} catch (error) {
 			toast.error(String(error), { id: pending });

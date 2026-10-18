@@ -57,6 +57,12 @@
 				text: plural(hiddenTotals.codeInterpreterCount, '{{COUNT}} analysis', '{{COUNT}} analyses')
 			});
 		}
+		if (hiddenTotals.interjectionCount > 0) {
+			// fork 0.3.5
+			parts.push({
+				text: plural(hiddenTotals.interjectionCount, '{{COUNT}} of your messages', '{{COUNT}} of your messages')
+			});
+		}
 		if (hiddenTotals.compactionCount > 0) {
 			// fork 0.3.4
 			parts.push({

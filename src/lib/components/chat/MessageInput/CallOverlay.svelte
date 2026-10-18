@@ -57,6 +57,7 @@
 	let outputLevel = 0;
 	let callAudioElement: HTMLAudioElement;
 	let fallbackElement: HTMLAudioElement | null = null; // fork: see playAudio
+	let fallbackOwner: object | null = null; // fork 0.3.5: which playback owns its handlers
 	let playbackContext: AudioContext | undefined;
 	let playbackSource: MediaElementAudioSourceNode | undefined;
 	let playbackAnalyser: AnalyserNode | undefined;
@@ -545,12 +546,16 @@
 				}
 
 				let settled = false;
+				// fork 0.3.5 (review C18): this playback belongs to the current audio generation;
+				// Stop/teardown aborts it, and nothing may start playing for it afterwards.
+				const signal = audioAbortController.signal;
 				const finish = async (e: Event | Error | null = null) => {
 					if (settled) {
 						return;
 					}
 
 					settled = true;
+					signal.removeEventListener('abort', onAbort);
 					resetAvatarPlayback();
 					audioElement.onplaying = null;
 					audioElement.onwaiting = null;
@@ -561,6 +566,13 @@
 					await new Promise((r) => setTimeout(r, 100));
 					resolve(e);
 				};
+
+				const onAbort = () => finish();
+				signal.addEventListener('abort', onAbort, { once: true });
+				if (signal.aborted || destroyed) {
+					finish();
+					return;
+				}
 
 				audioElement.src = audio.src;
 				// stopAllAudio mutes it; unmuting after play() outside a gesture makes WebKit pause it
@@ -577,7 +589,8 @@
 					// is first used after the call began, so fall back to the page's audio element,
 					// which the chat's AudioQueue unlocks on the first tap (no avatar animation then).
 					const shared = document.getElementById('audioElement') as HTMLAudioElement | null;
-					if (error?.name !== 'NotAllowedError' || !shared || settled) {
+					if (settled || signal.aborted || destroyed) return;
+					if (error?.name !== 'NotAllowedError' || !shared) {
 						console.error(error);
 						finish(error);
 						return;
@@ -585,11 +598,18 @@
 					audioElement.onpause = null;
 					audioElement.onerror = null;
 					audioElement.onended = null;
+					// Only this playback may clear the shared element's handlers (a later one owns them then).
+					const owner = {};
+					fallbackOwner = owner;
 					const done = (e: unknown = null) => {
-						shared.onended = shared.onerror = shared.onpause = null;
-						if (fallbackElement === shared) fallbackElement = null;
+						if (fallbackOwner === owner) {
+							shared.onended = shared.onerror = shared.onpause = null;
+							fallbackOwner = null;
+							fallbackElement = null;
+						}
 						finish(e as Error | null);
 					};
+					signal.addEventListener('abort', () => shared.pause(), { once: true });
 					shared.src = audio.src;
 					shared.muted = false;
 					shared.playbackRate = audioElement.playbackRate;
@@ -597,8 +617,12 @@
 					shared.onerror = () => done();
 					shared.onpause = () => done();
 					fallbackElement = shared;
+					if (signal.aborted) {
+						done();
+						return;
+					}
 					shared.play().catch((e) => {
-						console.error(e);
+						if (!signal.aborted) console.error(e);
 						done(e);
 					});
 				});

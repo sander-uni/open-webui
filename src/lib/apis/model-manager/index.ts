@@ -23,17 +23,24 @@ export const getModelManagerStatus = (token: string) => call(token, 'GET', '/sta
 export const loadManagedModel = (token: string, model: string, pin = false, force = false) =>
 	call(token, 'POST', '/load', { model, pin, force });
 
-export const cancelManagedLoad = (token: string) => call(token, 'POST', '/cancel', {});
+// 0.3.5 (review C14): `model` is the model the confirmation was shown for; the manager refuses
+// when another one is loading/loaded by then.
+export const cancelManagedLoad = (token: string, model = '') =>
+	call(token, 'POST', '/cancel', model ? { model } : {});
 
-export const unloadManagedModel = (token: string, force = false) =>
-	call(token, 'POST', '/unload', { force });
+export const unloadManagedModel = (token: string, force = false, model = '') =>
+	call(token, 'POST', '/unload', model ? { force, model } : { force });
+
+/** 0.3.5 (review C15): change only a model's live hidden flag; {exists: false} = no saved settings. */
+export const setModelVisibility = (token: string, id: string, hidden: boolean) =>
+	call(token, 'POST', '/visibility', { id, hidden }) as Promise<{ exists: boolean }>;
 
 export const pinManagedModel = (token: string, pinned: boolean) =>
 	call(token, 'POST', '/pin', { pinned });
 
 export const saveModelManagerSettings = (
 	token: string,
-	settings: { idle_minutes?: number; hidden?: string[] }
+	settings: { idle_minutes?: number; hidden?: string[]; hidden_add?: string[]; hidden_remove?: string[] }
 ) => call(token, 'POST', '/settings', settings);
 
 export const getModelManagerFilter = (token: string) => call(token, 'GET', '/filter');

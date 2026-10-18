@@ -13,10 +13,37 @@ const headers = (token: string) => ({
 });
 
 /** Whether this reply still takes messages for its next step. */
-export const getInterjectionState = async (token: string, chatId: string, messageId: string) => {
+export type InterjectionItem = { id: string; text: string; files: any[] };
+export type InterjectionState = {
+	accepting: boolean;
+	paused?: boolean;
+	pending: InterjectionItem[];
+	/** 0.3.5: not delivered (the reply ended first), kept until the browser acknowledges them */
+	returned?: InterjectionItem[];
+};
+
+export const getInterjectionState = async (
+	token: string,
+	chatId: string,
+	messageId: string
+): Promise<InterjectionState> => {
 	const res = await fetch(url(chatId, messageId), { headers: headers(token) });
-	if (!res.ok) return { accepting: false, pending: [] };
-	return (await res.json()) as { accepting: boolean; pending: { id: string }[] };
+	if (!res.ok) throw `HTTP ${res.status}`;
+	return (await res.json()) as InterjectionState;
+};
+
+/** 0.3.5: these returned messages are back in the input box; the server forgets them. */
+export const ackReturnedInterjections = async (
+	token: string,
+	chatId: string,
+	messageId: string,
+	ids: string[]
+): Promise<void> => {
+	await fetch(`${url(chatId, messageId)}/returned/ack`, {
+		method: 'POST',
+		headers: headers(token),
+		body: JSON.stringify({ ids })
+	});
 };
 
 /** Returns the new id, or null when the reply takes no message (no tools, or already finishing). */

@@ -6,7 +6,7 @@
 	import { toast } from 'svelte-sonner';
 	import { config, models as owuiModels, settings } from '$lib/stores';
 	import { getModels } from '$lib/apis';
-	import { createNewModel, getModelById, updateModelById } from '$lib/apis/models';
+	import { createNewModel } from '$lib/apis/models';
 
 	import {
 		cancelManagedLoad,
@@ -15,11 +15,11 @@
 		loadManagedModel,
 		pinManagedModel,
 		saveModelManagerSettings,
+		setModelVisibility,
 		unloadManagedModel
 	} from '$lib/apis/model-manager';
 	import { deleteFunctionById, getFunctionById } from '$lib/apis/functions';
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
-	import Spinner from '$lib/components/common/Spinner.svelte';
 	import OperationPlan from '$lib/components/model-manager/OperationPlan.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
 	import { managedId, refreshManagerState, requestModelSelection } from '$lib/components/model-manager/state';
@@ -62,19 +62,44 @@
 		confirmShow = true;
 	};
 
-	const refresh = async () => {
+	// 0.3.5 (review C13): one status read at a time. A refresh asked for meanwhile runs once
+	// after it, so an older answer never overwrites a newer one, and nothing is applied (or
+	// migrated) after the page is closed.
+	let refreshing: Promise<void> | null = null;
+	let refreshAgain = false;
+	const readStatus = async () => {
 		try {
-			status = await getModelManagerStatus(localStorage.token);
+			const next = await getModelManagerStatus(localStorage.token);
+			if (destroyed) return;
+			status = next;
 			unreachable = '';
 			if (!idleDirty) {
 				idleMinutes = status?.settings?.idle_minutes ?? 60;
 			}
-			moveHiddenToOpenWebUI();
 		} catch (error) {
+			if (destroyed) return;
 			unreachable = 'The model service is not reachable. Progress cannot be checked. Check the connection, start_webui.sh and logs/modelmgr.log before retrying messages.';
 		} finally {
 			loadingFirst = false;
 		}
+	};
+	const refresh = async (): Promise<void> => {
+		if (refreshing) {
+			refreshAgain = true;
+			return refreshing;
+		}
+		refreshing = (async () => {
+			do {
+				refreshAgain = false;
+				await readStatus();
+			} while (refreshAgain && !destroyed);
+		})();
+		try {
+			await refreshing;
+		} finally {
+			refreshing = null;
+		}
+		if (!destroyed && !unreachable) moveHiddenToOpenWebUI();
 	};
 
 	const poll = async () => {
@@ -152,27 +177,33 @@
 			refreshManagerState();
 		});
 
-	const cancelLoad = () => ask(
-		$i18n.t('Cancel loading for everyone?'),
-		status?.ux?.cancel_help ?? '',
-		() => run(async () => { await cancelManagedLoad(localStorage.token); refreshManagerState(); })
-	);
+	// 0.3.5 (review C14): the confirmation names a model; the request carries it, and the manager
+	// refuses if another model is being prepared/loaded by the time it arrives.
+	const cancelLoad = () => {
+		const target = status?.loading?.model ?? '';
+		ask(
+			$i18n.t('Cancel loading for everyone?'),
+			`${target ? `${target}. ` : ''}${status?.ux?.cancel_help ?? ''}`,
+			() => run(async () => { await cancelManagedLoad(localStorage.token, target); refreshManagerState(); })
+		);
+	};
 
 	const unload = () => {
+		const target = status?.model?.id ?? '';
 		if (status?.inflight > 0) {
 			ask(
 				$i18n.t('Unload while a request is running?'),
 				$i18n.t(
 					'{{count}} request(s) are still running on {{model}}. Unloading now cuts them off.',
-					{ count: status.inflight, model: status.model?.id }
+					{ count: status.inflight, model: target }
 				),
-				() => run(() => unloadManagedModel(localStorage.token, true))
+				() => run(() => unloadManagedModel(localStorage.token, true, target))
 			);
 			return;
 		}
 		ask($i18n.t('Put this model away?'),
-			`${status?.ux?.models?.[status?.model?.id]?.reload_text ?? 'The next message will need a fresh start, which can take several minutes.'} ${status?.pinned ? 'This also removes its pin.' : ''}`,
-			() => run(() => unloadManagedModel(localStorage.token, false)));
+			`${status?.ux?.models?.[target]?.reload_text ?? 'The next message will need a fresh start, which can take several minutes.'} ${status?.pinned ? 'This also removes its pin.' : ''}`,
+			() => run(() => unloadManagedModel(localStorage.token, false, target)));
 
 	};
 
@@ -243,25 +274,23 @@
 
 	const writeHidden = async (id: string, hidden: boolean) => {
 		if (!storable(id)) {
-			const list = new Set<string>(status?.settings?.hidden ?? []);
-			if (hidden) list.add(id);
-			else list.delete(id);
-			await saveModelManagerSettings(localStorage.token, { hidden: [...list] });
+			// 0.3.5 (review C16): add/remove this one id on the manager's current list
+			await saveModelManagerSettings(
+				localStorage.token,
+				hidden ? { hidden_add: [id] } : { hidden_remove: [id] }
+			);
 			await refresh();
 			return;
 		}
-		const saved = await getModelById(localStorage.token, id).catch(() => null);
-		if (saved?.id) {
-			// No access_grants in the update: who may use the model stays as it is.
-			await updateModelById(localStorage.token, id, {
-				id,
-				name: saved.name ?? id,
-				base_model_id: saved.base_model_id ?? null,
-				meta: { ...(saved.meta ?? {}), hidden },
-				params: saved.params ?? {},
-				is_active: saved.is_active ?? true
-			});
-		} else {
+		// 0.3.5 (review C15): only the live hidden flag changes, server-side
+		const result = await setModelVisibility(localStorage.token, id, hidden);
+		if (!hidden && (status?.settings?.hidden ?? []).includes(id)) {
+			// 0.3.5 (review C17): still on the manager's old list (an unfinished move): showing it
+			// must clear both places, or it stays hidden
+			await saveModelManagerSettings(localStorage.token, { hidden_remove: [id] });
+			await refresh();
+		}
+		if (!result?.exists) {
 			// A base model with no saved settings yet: the same record the eye toggle creates.
 			const listed = get(owuiModels).find((m: any) => m.id === id);
 			await createNewModel(localStorage.token, {
@@ -292,19 +321,22 @@
 
 	// One-time move of models hidden through the manager (0.3.1) to Open WebUI's flag. Each id
 	// on its own: one that can't be moved stays hidden the old way and doesn't stop the rest.
+	// 0.3.5 (review C17): an id counts as moved only once it is off the manager's list too; a
+	// failed move is tried again a minute later instead of never in this session.
 	let moving = false;
-	let moveTried = new Set<string>();
+	let moveRetryAt = new Map<string, number>();
 	const moveHiddenToOpenWebUI = async () => {
+		const now = Date.now();
 		const ids: string[] = (status?.settings?.hidden ?? []).filter(
-			(id: string) => storable(id) && !moveTried.has(id)
+			(id: string) => storable(id) && (moveRetryAt.get(id) ?? 0) <= now
 		);
-		if (moving || !ids.length) return;
+		if (moving || destroyed || !ids.length) return;
 		moving = true;
 		const moved: string[] = [];
 		const failed: string[] = [];
 		try {
 			for (const id of ids) {
-				moveTried.add(id);
+				moveRetryAt.set(id, now + 60_000);
 				try {
 					await writeHidden(id, true);
 					moved.push(id);
@@ -313,8 +345,8 @@
 				}
 			}
 			if (moved.length) {
-				const keep = (status?.settings?.hidden ?? []).filter((id: string) => !moved.includes(id));
-				await saveModelManagerSettings(localStorage.token, { hidden: keep });
+				await saveModelManagerSettings(localStorage.token, { hidden_remove: moved });
+				for (const id of moved) moveRetryAt.delete(id);
 				await refreshModels();
 				toast.success(
 					$i18n.t(

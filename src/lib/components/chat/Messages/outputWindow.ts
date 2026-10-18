@@ -55,6 +55,8 @@ export type HiddenTotals = {
 	failedCount: number;
 	/** fork 0.3.4: ctxproxy compactions among the hidden steps */
 	compactionCount: number;
+	/** fork 0.3.5: the user's messages delivered during the reply, among the hidden steps */
+	interjectionCount: number;
 };
 
 export type OutputWindow = {
@@ -85,8 +87,15 @@ function isEmptyMessage(item: OutputItem | undefined): boolean {
 	return item?.type === 'message' && !hasText(item);
 }
 
+/** fork 0.3.5 (review C11): a tool result that carries the user's interjection renders a
+ * "You added" note after its group (structuredOutput.ts), so it is a step and a group boundary. */
+function hasNote(item: OutputItem | undefined): boolean {
+	const notes = (item as any)?.interjections;
+	return item?.type === 'function_call_output' && Array.isArray(notes) && notes.length > 0;
+}
+
 function isStep(item: OutputItem | undefined): boolean {
-	return !!item && item.type !== 'function_call_output' && !isEmptyMessage(item);
+	return !!item && (item.type !== 'function_call_output' || hasNote(item)) && !isEmptyMessage(item);
 }
 
 /** True for items that stay inside one consecutive details group when rendered. */
@@ -94,8 +103,9 @@ function continuesRun(item: OutputItem | undefined, calls: Map<string, OutputIte
 	if (!item) return true;
 	if (DETAIL_TYPES.has(item.type ?? '')) return true;
 	if (item.type === 'function_call_output') {
-		// display_file results may render as an inline file, which splits the group.
-		return calls.get(item.call_id ?? '')?.name !== 'display_file';
+		// display_file results may render as an inline file, and a result with the user's
+		// message renders that note: both split the group.
+		return !hasNote(item) && calls.get(item.call_id ?? '')?.name !== 'display_file';
 	}
 	return isEmptyMessage(item);
 }
@@ -160,6 +170,7 @@ export function selectOutputWindow(
 		if (!item) continue;
 		if (item.type === 'function_call_output') {
 			if (item.call_id) results.set(item.call_id, index);
+			if (hasNote(item)) steps.push(index); // fork 0.3.5: its "You added" note is a step
 		} else {
 			if (item.type === 'function_call') calls.set(item.call_id ?? item.id ?? '', item);
 			if (isStep(item)) steps.push(index);
@@ -220,7 +231,8 @@ export function selectOutputWindow(
 		messageCount: 0,
 		codeInterpreterCount: 0,
 		failedCount: 0,
-		compactionCount: 0
+		compactionCount: 0,
+		interjectionCount: 0
 	};
 	for (const index of steps) {
 		if (selected.has(index)) continue;
@@ -229,6 +241,7 @@ export function selectOutputWindow(
 		else if (item.type === 'message') hiddenTotals.messageCount++;
 		else if (item.type === 'open_webui:code_interpreter') hiddenTotals.codeInterpreterCount++;
 		else if (item.type === COMPACTION_ITEM_TYPE) hiddenTotals.compactionCount++;
+		else if (hasNote(item)) hiddenTotals.interjectionCount++;
 		else if (item.type === 'function_call' || OPENAI_TOOL_NAMES[item.type ?? '']) {
 			const name = toolName(item);
 			hiddenTotals.toolCallCount++;
