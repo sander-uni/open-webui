@@ -154,7 +154,6 @@
 	};
 
 	const changedIn = (items: StackSetting[]) => items.filter((s) => differsFromDefault(s)).length;
-	const unsaved = (s: StackSetting) => s.key in changes;
 	const isNumber = (s: StackSetting) => ['int', 'float', 'port'].includes(s.kind);
 </script>
 
@@ -258,7 +257,7 @@
 					>
 						<span class="text-xs font-medium text-gray-700 dark:text-gray-300">{$i18n.t(g.title)}</span>
 						<span class="flex items-center gap-2 text-[0.6875rem] text-gray-400 dark:text-gray-600">
-							{#if g.items.some(unsaved)}
+							{#if g.items.some((x) => x.key in changes)}
 								<span class="text-blue-500">{$i18n.t('unsaved')}</span>
 							{/if}
 							{#if changedIn(g.items) > 0}
@@ -284,7 +283,7 @@
 														>{$i18n.t(s.label)}</span
 													>
 												</Tooltip>
-												{#if unsaved(s)}<span class="size-1.5 rounded-full bg-blue-500" aria-label="unsaved"></span>{/if}
+												{#if s.key in changes}<span class="inline-block size-1.5 shrink-0 rounded-full bg-blue-500" aria-label="unsaved"></span>{/if}
 												{#if differsFromDefault(s) && draft[s.key] !== null}
 													<button
 														type="button"
@@ -324,7 +323,7 @@
 														>{$i18n.t('follows Context Proxy')}</span
 													>
 												{/if}
-												{#if unsaved(s)}<span class="size-1.5 rounded-full bg-blue-500" aria-label="unsaved"></span>{/if}
+												{#if s.key in changes}<span class="inline-block size-1.5 shrink-0 rounded-full bg-blue-500" aria-label="unsaved"></span>{/if}
 												{#if isEditable(s) && differsFromDefault(s) && draft[s.key] !== null}
 													<button
 														type="button"
