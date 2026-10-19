@@ -258,6 +258,7 @@ from open_webui.utils.middleware import (
     process_chat_response,
     publish_chat_failed_event,
 )
+from open_webui.utils.toolbox_hold import toolbox_run_end  # fork 0.3.8
 from open_webui.utils.misc import get_response_error_detail, merge_model_params
 from open_webui.utils.model_ids import strip_provider_model_prefix
 from open_webui.utils.models import (
@@ -1778,6 +1779,8 @@ async def chat_completion(
                             log.debug('Error disconnecting MCP client: %s', e)
             except BaseException as e:
                 log.debug('Error cleaning up MCP clients: %s', e)
+
+            await toolbox_run_end(metadata)  # fork 0.3.8: the run is over, let the toolbox miner go
 
             # Deregister this task, then emit chat:active=false if no others remain
             try:

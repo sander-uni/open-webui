@@ -2690,8 +2690,8 @@ async def process_chat_payload(request, form_data, user, metadata, model):
 
                             async def make_tool_function(client, function_name, server_id=server_id):
                                 async def tool_function(**kwargs):
-                                    # fork 0.3.7: GPU tools wait for the toolbox miner to pause
-                                    async with toolbox_hold(server_id, function_name, metadata.get('chat_id')):
+                                    # fork 0.3.8: toolbox tools wait for the toolbox miner to pause
+                                    async with toolbox_hold(server_id, function_name, metadata):
                                         return await client.call_tool(
                                             function_name,
                                             function_args=kwargs,

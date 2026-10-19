@@ -238,10 +238,44 @@ async def save_settings(request: Request, user=Depends(get_admin_user)):
     return await _call('POST', '/mm/settings', await request.json())
 
 
+async def _miner_view() -> dict:
+    """modelmgr's Miner view, plus (fork 0.3.8) the configured MCP servers for the page's
+    toolbox tool picker. Each read refreshes the tool-call hook's copy of the toolbox tool list."""
+    from open_webui.models.config import Config
+    from open_webui.utils.toolbox_hold import remember_tools, tool_origin
+
+    view = await _call('GET', '/mm/miner')
+    toolbox = view.get('toolbox') if isinstance(view, dict) else None
+    if isinstance(toolbox, dict):
+        remember_tools(toolbox.get('tools'))
+    connections = []
+    for c in await Config.get('tool_server.connections', []) or []:
+        if isinstance(c, dict) and c.get('type', '') == 'mcp' and c.get('url'):
+            info = c.get('info') or {}
+            connections.append(
+                {
+                    'id': info.get('id'),
+                    'name': info.get('name') or info.get('id'),
+                    'url': c['url'],
+                    'origin': tool_origin(c['url']),
+                }
+            )
+    view['connections'] = connections
+    return view
+
+
 @router.get('/miner')
 async def get_miner(user=Depends(get_admin_user)):
     """fork 0.3.7: Admin Settings > Miner (the Windows and the toolbox miner, and their settings)."""
-    return await _call('GET', '/mm/miner')
+    return await _miner_view()
+
+
+@router.post('/miner/settings')
+async def save_miner_settings(request: Request, user=Depends(get_admin_user)):
+    """fork 0.3.8: the toolbox tool servers; answers with the new Miner view."""
+    body = await request.json()
+    await _call('POST', '/mm/settings', {'toolbox_tools': body.get('toolbox_tools')})
+    return await _miner_view()
 
 
 @router.get('/filter')
