@@ -6,6 +6,7 @@
 		syncInterjections,
 		trackInterjections
 	} from '$lib/components/interjections/state'; // fork 0.3.3 (0.3.5: sync, keepUnsent)
+	import { effortParams } from '$lib/components/model-manager/effort'; // fork 0.4.0
 	import type { TerminalContext } from '$lib/types';
 	import { v4 as uuidv4 } from 'uuid';
 	import { toast } from 'svelte-sonner';
@@ -4350,6 +4351,7 @@
 				params: {
 					...$settings?.params,
 					...Object.fromEntries(Object.entries(params).filter(([, value]) => value !== null)),
+					...effortParams(model, $models, $settings), // fork 0.4.0: the effort picker's level
 					model_controls: $settings?.params?.model_controls ?? {},
 					stop: getStopTokens()
 				},

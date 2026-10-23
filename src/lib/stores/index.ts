@@ -243,6 +243,7 @@ type OllamaModelDetails = {
 
 type Settings = {
 	pinnedModels?: string[];
+	modelEfforts?: Record<string, string>; // fork 0.4.0: the effort picker's last pick per model id
 	toolServers?: never[];
 	detectArtifacts?: boolean;
 	showUpdateToast?: boolean;

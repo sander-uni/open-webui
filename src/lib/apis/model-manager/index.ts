@@ -125,3 +125,46 @@ export const getCompactionNote = (
 			conv ? `?conv=${encodeURIComponent(conv)}` : ''
 		}`
 	);
+
+// 0.4.0: reasoning effort levels per model (Admin Settings > Model Manager > Reasoning effort).
+export type EffortLevel = { name: string; budget: number | null; sentence: string | null };
+export type EffortModel = {
+	id: string;
+	name: string;
+	engine: string;
+	provider?: string;
+	kind: 'native' | 'template' | 'budget';
+	levels: EffortLevel[];
+	default: string | null;
+	compact_cap: number | null;
+	edited: boolean;
+	defaults: { levels: EffortLevel[]; default: string | null };
+};
+
+export const getEfforts = (token: string) => call(token, 'GET', '/efforts') as Promise<{ models: EffortModel[] }>;
+
+export const saveEfforts = (
+	token: string,
+	update: { id: string; levels?: Partial<EffortLevel>[]; default?: string | null; compact_cap?: number | null; reset?: boolean }
+) => call(token, 'POST', '/efforts', update) as Promise<EffortModel>;
+
+// 0.4.0: the ChatGPT plan's usage for a Codex model (5-hour and weekly windows).
+export type UsageWindow = { used_percent: number; resets_at: number | null; window_s?: number | null };
+export type CloudUsage = {
+	plan?: string | null;
+	limit_reached?: boolean;
+	'5h'?: UsageWindow | null;
+	week?: UsageWindow | null;
+	updated_at?: number;
+	error?: string;
+};
+
+export const getCloudUsage = async (token: string, model: string, signal?: AbortSignal): Promise<CloudUsage | null> => {
+	const res = await fetch(`${WEBUI_API_BASE_URL}/model-manager/cloud-usage?model=${encodeURIComponent(model)}`, {
+		headers: { Accept: 'application/json', authorization: `Bearer ${token}` },
+		signal
+	});
+	if (!res.ok) return null;
+	const data = await res.json().catch(() => null);
+	return (data?.usage ?? null) as CloudUsage | null;
+};

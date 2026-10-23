@@ -84,6 +84,8 @@
 	import ModelSelector from './ModelSelector.svelte';
 	import ModelLoadStatus from '$lib/components/model-manager/ModelLoadStatus.svelte'; // fork
 	import ModelStats from '$lib/components/model-manager/ModelStats.svelte'; // fork
+	import EffortPicker from '$lib/components/model-manager/EffortPicker.svelte'; // fork 0.4.0
+	import CloudUsage from '$lib/components/model-manager/CloudUsage.svelte'; // fork 0.4.0
 	import PendingInterjections from '$lib/components/interjections/PendingInterjections.svelte'; // fork 0.3.3
 	import { acceptsInterjections, isDirectAttachment } from '$lib/components/interjections/state'; // fork 0.3.3
 	import ModelControls from './MessageInput/ModelControls.svelte';
@@ -2738,8 +2740,10 @@
 
 								<div class="self-end flex space-x-1 mr-1 min-w-0 gap-[0.03125rem]">
 									<!-- fork 0.3.2: speed and context of this chat (hidden on phone widths) -->
-									<div class="hidden sm:flex items-center pr-1">
+									<div class="hidden sm:flex items-center gap-2 pr-1">
 										<ModelStats chatId={chatId} active={isActive} />
+										<!-- fork 0.4.0: ChatGPT plan usage while a Codex model is selected -->
+										<CloudUsage selectedModels={selectedModelIds} active={isActive} />
 									</div>
 									<div class="flex min-w-0 max-w-[10rem] items-center sm:max-w-[13rem]">
 										<ModelSelector
@@ -2751,6 +2755,8 @@
 											triggerClassName="items-center gap-1.5 rounded-lg pl-2 pr-1.5 py-1 text-[0.8125rem] font-normal text-gray-600 transition-colors duration-100 hover:bg-gray-50/40 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-800/40 dark:hover:text-gray-200"
 										/>
 									</div>
+									<!-- fork 0.4.0: reasoning effort, remembered per model -->
+									<EffortPicker selectedModels={selectedModelIds} />
 									<ModelControls selectedModels={selectedModelIds} />
 
 									{#if isActive && prompt === '' && files.length === 0}

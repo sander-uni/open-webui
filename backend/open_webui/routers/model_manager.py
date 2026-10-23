@@ -238,6 +238,31 @@ async def save_settings(request: Request, user=Depends(get_admin_user)):
     return await _call('POST', '/mm/settings', await request.json())
 
 
+@router.get('/efforts')
+async def get_efforts(user=Depends(get_admin_user)):
+    """0.4.0: every model's reasoning effort levels (budgets, sentences, default, compaction cap)."""
+    return await _call('GET', '/mm/efforts')
+
+
+@router.post('/efforts')
+async def save_efforts(request: Request, user=Depends(get_admin_user)):
+    """0.4.0: one model's edited levels, or {"id", "reset": true}."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    if not isinstance(body, dict) or not isinstance(body.get('id'), str):
+        raise HTTPException(status_code=400, detail='Send {"id": "<model id>", "levels": [...]}.')
+    return await _call('POST', '/mm/efforts', body)
+
+
+@router.get('/cloud-usage')
+async def get_cloud_usage(model: str, user=Depends(get_verified_user)):
+    """0.4.0: the ChatGPT plan's 5-hour and weekly usage for a Codex model (usage is null for
+    other models). Any signed-in user: it is shown next to the model picker."""
+    return await _call('GET', f'/mm/cloud/usage?model={quote(model, safe="")}')
+
+
 async def _miner_view() -> dict:
     """modelmgr's Miner view, plus (fork 0.3.8) the configured MCP servers for the page's
     toolbox tool picker. Each read refreshes the tool-call hook's copy of the toolbox tool list."""
