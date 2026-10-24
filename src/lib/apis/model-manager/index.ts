@@ -151,6 +151,17 @@ export const saveEfforts = (
 	update: { id: string; levels?: Partial<EffortLevel>[]; default?: string | null; compact_cap?: number | null; reset?: boolean }
 ) => call(token, 'POST', '/efforts', update) as Promise<EffortModel>;
 
+// 0.4.2: a workspace model's own reasoning_effort (the picker's start value), also for users who
+// may only read the model (Open WebUI gives them the model without its params).
+export const getPresetEffort = async (token: string, model: string): Promise<string | null> => {
+	const res = await fetch(`${WEBUI_API_BASE_URL}/model-manager/preset-effort?model=${encodeURIComponent(model)}`, {
+		headers: { Accept: 'application/json', authorization: `Bearer ${token}` }
+	});
+	if (!res.ok) return null;
+	const data = await res.json().catch(() => null);
+	return typeof data?.reasoning_effort === 'string' && data.reasoning_effort ? data.reasoning_effort : null;
+};
+
 // 0.4.0: the ChatGPT plan's usage for a Codex model (5-hour and weekly windows).
 export type UsageWindow = { used_percent: number; resets_at: number | null; window_s?: number | null };
 export type CloudUsage = {

@@ -7,7 +7,7 @@
 	import { getContext } from 'svelte';
 	import { models, settings } from '$lib/stores';
 	import { updateUserSettings } from '$lib/apis/users';
-	import { getModelById } from '$lib/apis/models';
+	import { getPresetEffort } from '$lib/apis/model-manager';
 	import Dropdown from '$lib/components/common/Dropdown.svelte';
 	import DropdownMenu from '$lib/components/common/DropdownMenu.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
@@ -35,9 +35,7 @@
 	const readPreset = async (id: string) => {
 		presetEffort[id] = null;
 		try {
-			const full = await getModelById(localStorage.token, id);
-			const v = full?.params?.reasoning_effort;
-			presetEffort[id] = typeof v === 'string' && v ? v : null;
+			presetEffort[id] = await getPresetEffort(localStorage.token, id);
 		} catch {
 			presetEffort[id] = null;
 		}

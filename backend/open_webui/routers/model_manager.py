@@ -263,6 +263,30 @@ async def get_cloud_usage(model: str, user=Depends(get_verified_user)):
     return await _call('GET', f'/mm/cloud/usage?model={quote(model, safe="")}')
 
 
+@router.get('/preset-effort')
+async def get_preset_effort(model: str, user=Depends(get_verified_user)):
+    """0.4.2: a workspace model's own reasoning_effort, the effort picker's start value. Open WebUI
+    gives read-only users a model without its params; this is only that one level, for anyone who
+    may read the model (the same check as GET /api/v1/models/model)."""
+    from open_webui.config import BYPASS_ADMIN_ACCESS_CONTROL
+    from open_webui.models.access_grants import AccessGrants
+    from open_webui.models.models import Models
+
+    found = await Models.get_model_by_id(model)
+    if found is None:
+        raise HTTPException(status_code=404, detail='No such model.')
+    allowed = (user.role == 'admin' and BYPASS_ADMIN_ACCESS_CONTROL) or user.id == found.user_id
+    for permission in ('write', 'read'):
+        allowed = allowed or await AccessGrants.has_access(
+            user_id=user.id, resource_type='model', resource_id=found.id, permission=permission
+        )
+    if not allowed:
+        raise HTTPException(status_code=404, detail='No such model.')
+    params = found.params.model_dump() if found.params else {}
+    value = params.get('reasoning_effort')
+    return {'model': model, 'reasoning_effort': value if isinstance(value, str) and value else None}
+
+
 async def _miner_view() -> dict:
     """modelmgr's Miner view, plus (fork 0.3.8) the configured MCP servers for the page's
     toolbox tool picker. Each read refreshes the tool-call hook's copy of the toolbox tool list."""
