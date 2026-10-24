@@ -4,7 +4,7 @@ import { budgetText, effortMeta, effortParams, nearestLevel, pickedEffort } from
 const codex = { id: 'codex/gpt-6.1-sol', modelmgr: { efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], default_effort: 'low', provider: 'codex' } };
 const qwen = {
 	id: 'qwen3.8-flash-next-iq3_s',
-	openai: { modelmgr: { engine: 'strata', efforts: ['low', 'medium', 'xhigh'], default_effort: 'xhigh', effort_budgets: { low: 4096, medium: 8192, xhigh: 24576 } } }
+	openai: { modelmgr: { engine: 'strata', efforts: ['low', 'medium', 'xhigh'], default_effort: 'xhigh', effort_aliases: { high: 'xhigh' }, effort_budgets: { low: 4096, medium: 8192, xhigh: 24576 } } }
 };
 const preset = { id: 'plab-v12sol', info: { base_model_id: 'codex/gpt-6.1-sol' } };
 const ninfer = { id: 'qwen3.8-27b', modelmgr: { engine: 'ninfer' } };
@@ -21,6 +21,7 @@ describe('effort levels', () => {
 	it('picks the nearest level as modelmgr does', () => {
 		const q = effortMeta(qwen, models)!;
 		expect(nearestLevel('high', q)).toBe('xhigh'); // the template's alias
+		expect(nearestLevel('high', { efforts: ['low', 'medium', 'xhigh'], default_effort: 'xhigh' })).toBe('xhigh'); // nearest, higher on a tie
 		expect(nearestLevel('max', q)).toBe('xhigh');
 		expect(nearestLevel(null, q)).toBe('xhigh');
 		expect(nearestLevel('minimal', q)).toBe('low');

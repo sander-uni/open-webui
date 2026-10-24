@@ -65,8 +65,8 @@
 		const d = drafts[m.id];
 		const levels = d.levels.map((lv) => {
 			const out: { name: string; budget?: number; sentence?: string } = { name: lv.name };
-			if (m.kind !== 'native' && lv.budget.trim() !== '') out.budget = Number(lv.budget.trim());
-			if (m.kind === 'template') out.sentence = lv.sentence;
+			if (m.budgets && lv.budget.trim() !== '') out.budget = Number(lv.budget.trim());
+			if (m.kind === 'template' && defaultOf(m, lv.name)?.sentence != null) out.sentence = lv.sentence;
 			return out;
 		});
 		const bad = levels.find((lv) => lv.budget !== undefined && (!Number.isInteger(lv.budget) || lv.budget < 0));
@@ -105,8 +105,10 @@
 	const kindText = (m: EffortModel) =>
 		m.kind === 'native'
 			? $i18n.t('The service sets what each level does. Choose the default level.')
-			: m.kind === 'template'
+			: m.kind === 'template' && m.budgets
 				? $i18n.t("The chat template's own levels. Each has a thinking budget and the sentence the model is given.")
+				: m.kind === 'template'
+				? $i18n.t("The chat template's own levels: the sentence the model is given (the engine's own thinking budget applies).")
 				: $i18n.t('Six levels, each a thinking budget (sent to the service, and enforced here).');
 	const defaultOf = (m: EffortModel, name: string) => m.defaults.levels.find((lv) => lv.name === name);
 	const btn =
@@ -132,6 +134,7 @@
 				</summary>
 				<div class="mt-2 space-y-2 text-xs">
 					<p>{kindText(m)}</p>
+					{#if m.source}<p class="text-gray-500">{$i18n.t('Found from')}: {m.source}{m.aliases && Object.keys(m.aliases).length ? ` · ${Object.entries(m.aliases).map(([a, b]) => `${a} = ${b}`).join(', ')}` : ''}</p>{/if}
 					<label class="flex items-center gap-2">
 						{$i18n.t('Default level')}
 						<select class={field} bind:value={d.default}>
@@ -148,11 +151,15 @@
 								<div class="space-y-1">
 									<label class="flex flex-wrap items-center gap-2">
 										<span class="w-12 font-medium">{lv.name}</span>
-										<input class="w-28 {field}" type="text" inputmode="numeric" bind:value={lv.budget}
-											aria-label={`${lv.name}: ${$i18n.t('thinking budget in tokens')}`} />
-										<span class="text-gray-500">{$i18n.t('tokens')}{def && String(def.budget) !== lv.budget ? ` (${$i18n.t('default')} ${def.budget})` : ''}</span>
+										{#if m.budgets}
+											<input class="w-28 {field}" type="text" inputmode="numeric" bind:value={lv.budget}
+												aria-label={`${lv.name}: ${$i18n.t('thinking budget in tokens')}`} />
+											<span class="text-gray-500">{$i18n.t('tokens')}{def && String(def.budget) !== lv.budget ? ` (${$i18n.t('default')} ${def.budget})` : ''}</span>
+										{:else}
+											<span class="text-gray-500">{$i18n.t("The engine's own thinking budget applies (no budget per request).")}</span>
+										{/if}
 									</label>
-									{#if m.kind === 'template'}
+									{#if m.kind === 'template' && def?.sentence != null}
 										<textarea class="w-full {field}" rows="2" bind:value={lv.sentence}
 											aria-label={`${lv.name}: ${$i18n.t('sentence the model is given')}`}
 											placeholder={$i18n.t('No sentence (the template adds none at this level)')}></textarea>

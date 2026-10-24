@@ -134,6 +134,9 @@ export type EffortModel = {
 	engine: string;
 	provider?: string;
 	kind: 'native' | 'template' | 'budget';
+	budgets: boolean; // false: the engine takes no thinking budget per request (NInfer, Ollama)
+	source?: string; // where the levels were found (the chat template, the provider's list, ...)
+	aliases?: Record<string, string>;
 	levels: EffortLevel[];
 	default: string | null;
 	compact_cap: number | null;

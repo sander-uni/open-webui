@@ -7,6 +7,7 @@
 export type EffortMeta = {
 	efforts: string[];
 	default_effort?: string | null;
+	effort_aliases?: Record<string, string>; // the template's own (Qwen: high = xhigh)
 	effort_budgets?: Record<string, number | null>;
 	provider?: string;
 	engine?: string;
@@ -14,8 +15,6 @@ export type EffortMeta = {
 };
 
 export const ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
-// Strata's chat template treats "high" as xhigh (modelmgr does the same).
-const TEMPLATE_ALIASES: Record<string, string> = { high: 'xhigh' };
 
 const metaOf = (model: any): EffortMeta | null => {
 	const m = model?.modelmgr ?? model?.openai?.modelmgr;
@@ -40,7 +39,7 @@ export const nearestLevel = (asked: string | null | undefined, meta: EffortMeta)
 	const names = meta.efforts;
 	if (!names.length) return null;
 	let want = (asked ?? '').trim().toLowerCase() || (meta.default_effort ?? '');
-	if (meta.engine === 'strata') want = TEMPLATE_ALIASES[want] ?? want;
+	want = meta.effort_aliases?.[want] ?? want;
 	if (names.includes(want)) return want;
 	const i = ORDER.indexOf(want);
 	if (i >= 0) {
