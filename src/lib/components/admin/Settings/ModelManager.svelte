@@ -22,6 +22,7 @@
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import OperationPlan from '$lib/components/model-manager/OperationPlan.svelte';
 	import EffortSettings from '$lib/components/model-manager/EffortSettings.svelte'; // fork 0.4.0
+	import ComfyLog from '$lib/components/model-manager/ComfyLog.svelte'; // fork 0.4.1
 	import Switch from '$lib/components/common/Switch.svelte';
 	import { managedId, refreshManagerState, requestModelSelection } from '$lib/components/model-manager/state';
 
@@ -566,6 +567,8 @@
 			<p class="text-xs">{$i18n.t('Hiding only removes a model from the picker. It keeps answering in existing chats and as the base of workspace models. Prepare now may switch away from the current model; running replies finish first.')}</p>
 			<!-- fork 0.4.0: reasoning effort levels per model -->
 			<EffortSettings />
+			<!-- fork 0.4.1: ComfyUI's running job and log -->
+			<ComfyLog />
 			{#if oldFilterInstalled}
 				<p>{$i18n.t('The old loading-status filter is installed. Remove it; replies now show preparation steps themselves.')}</p>
 				<button class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]" disabled={filterBusy} type="button" on:click={removeFilter}>{$i18n.t('Remove old filter')}</button>

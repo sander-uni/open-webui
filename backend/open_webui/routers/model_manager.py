@@ -327,6 +327,13 @@ async def save_miner_settings(request: Request, user=Depends(get_admin_user)):
     return await _miner_view()
 
 
+@router.get('/comfyui/log')
+async def get_comfyui_log(lines: int = 300, user=Depends(get_admin_user)):
+    """fork 0.4.1: Admin Settings > Model Manager > ComfyUI: the end of ComfyUI's own log and the running
+    job with its progress (modelmgr 0.8.0)."""
+    return await _call('GET', f'/mm/comfyui/log?lines={max(10, min(int(lines), 5000))}')
+
+
 @router.get('/filter')
 async def get_filter(user=Depends(get_admin_user)):
     """The loading-status filter function from earlier versions of this page is retired: a reply

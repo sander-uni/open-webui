@@ -45,6 +45,28 @@ export const saveModelManagerSettings = (
 
 export const getModelManagerFilter = (token: string) => call(token, 'GET', '/filter');
 
+// fork 0.4.1: ComfyUI's log and its running job (modelmgr 0.8.0)
+export type ComfyJobProgress = {
+	phase: 'preparing' | 'sampling' | 'finishing';
+	step: number;
+	steps: number;
+	s_per_step: number | null;
+	phase_s: number;
+	segment: number | null;
+	segments: number | null;
+	fraction: number;
+	eta_s: number | null;
+};
+
+export type ComfyLogView = {
+	path: string;
+	lines: string[];
+	running: { id: string; tool: string; status: string; detail: string; running_s: number | null; progress: ComfyJobProgress | null } | null;
+};
+
+export const getComfyLog = (token: string, lines = 300) =>
+	call(token, 'GET', `/comfyui/log?lines=${lines}`) as Promise<ComfyLogView>;
+
 // fork 0.3.7: Admin Settings > Miner. fork 0.3.8: the toolbox is held per agent run.
 export type ToolboxMinerState = {
 	state?: string;
