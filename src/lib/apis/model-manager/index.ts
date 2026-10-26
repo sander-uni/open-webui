@@ -54,6 +54,7 @@ export type ComfyJobProgress = {
 	phase_s: number;
 	segment: number | null;
 	segments: number | null;
+	node: string | null;
 	fraction: number;
 	eta_s: number | null;
 };

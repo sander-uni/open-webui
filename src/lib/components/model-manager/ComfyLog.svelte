@@ -72,7 +72,7 @@
 						{Math.round(pr.fraction * 100)}%
 						{#if pr.segments} · {$i18n.t('segment')} {pr.segment}/{pr.segments}{/if}
 						{#if pr.phase === 'sampling'} · {$i18n.t('step')} {pr.step}/{pr.steps}{#if pr.s_per_step} ({pr.s_per_step} s/{$i18n.t('step')}){/if}
-						{:else} · {pr.phase} {clock(pr.phase_s)}{/if}
+						{:else} · {pr.phase} {clock(pr.phase_s)}{#if pr.node} ({pr.node}){/if}{/if}
 						{#if pr.eta_s !== null} · {$i18n.t('about {{left}} left', { left: clock(pr.eta_s) })}{/if}
 					</p>
 				{/if}
