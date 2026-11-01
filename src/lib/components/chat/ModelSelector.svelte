@@ -11,6 +11,7 @@
 	const i18n = getContext('i18n');
 
 	export let selectedModels = [''];
+	export let onModelSelect: (models: string[]) => void = () => {};
 	export let disabled = false;
 
 	export let showSetDefault = true;
@@ -67,6 +68,7 @@
 		if (match) {
 			selectRequestSeen = $modelSelectRequest.at;
 			selectedModels = [match.id];
+			onModelSelect?.([match.id]); // saved like a pick in the list (0.12.5 saves there, not on send)
 		}
 	}
 
@@ -100,6 +102,7 @@
 					{disabled}
 					bind:compareEnabled={compareModels}
 					bind:values={selectedModels}
+					{onModelSelect}
 				/>
 			</div>
 		</div>

@@ -69,6 +69,11 @@
 				text: plural(hiddenTotals.compactionCount, '{{COUNT}} compaction', '{{COUNT}} compactions')
 			});
 		}
+		if (hiddenTotals.imageCount > 0) {
+			parts.push({
+				text: plural(hiddenTotals.imageCount, '{{COUNT}} image', '{{COUNT}} images')
+			});
+		}
 		return parts;
 	})();
 

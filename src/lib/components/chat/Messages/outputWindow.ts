@@ -53,8 +53,10 @@ export type HiddenTotals = {
 	messageCount: number;
 	codeInterpreterCount: number;
 	failedCount: number;
-	/** fork 0.3.4: ctxproxy compactions among the hidden steps */
+	/** fork 0.3.4: ctxproxy compactions among the hidden steps; also Open WebUI's own (0.12.5) */
 	compactionCount: number;
+	/** generated images among the hidden steps (0.12.5) */
+	imageCount: number;
 	/** fork 0.3.5: the user's messages delivered during the reply, among the hidden steps */
 	interjectionCount: number;
 };
@@ -232,6 +234,7 @@ export function selectOutputWindow(
 		codeInterpreterCount: 0,
 		failedCount: 0,
 		compactionCount: 0,
+		imageCount: 0,
 		interjectionCount: 0
 	};
 	for (const index of steps) {
@@ -240,7 +243,9 @@ export function selectOutputWindow(
 		if (item.type === 'reasoning') hiddenTotals.reasoningCount++;
 		else if (item.type === 'message') hiddenTotals.messageCount++;
 		else if (item.type === 'open_webui:code_interpreter') hiddenTotals.codeInterpreterCount++;
-		else if (item.type === COMPACTION_ITEM_TYPE) hiddenTotals.compactionCount++;
+		else if (item.type === COMPACTION_ITEM_TYPE || item.type === 'open_webui:context_compaction')
+			hiddenTotals.compactionCount++;
+		else if (item.type === 'image_generation_call') hiddenTotals.imageCount++;
 		else if (hasNote(item)) hiddenTotals.interjectionCount++;
 		else if (item.type === 'function_call' || OPENAI_TOOL_NAMES[item.type ?? '']) {
 			const name = toolName(item);

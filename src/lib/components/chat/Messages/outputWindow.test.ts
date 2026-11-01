@@ -243,6 +243,7 @@ describe('tool-chain output window', () => {
 				codeInterpreterCount: 0,
 				failedCount: 0,
 				compactionCount: 0,
+				imageCount: 0,
 				interjectionCount: 0
 			},
 			hiddenRun: null,
@@ -440,6 +441,20 @@ describe('tool-chain window fixes', () => {
 		expect(totals.failedCount).toBe(1);
 		// The first group's own hidden run is tiny; the totals are not.
 		expect(window.hiddenRun?.toolCallCount ?? 0).toBeLessThan(2);
+	});
+
+	it('counts hidden native compactions and generated images (0.12.5)', () => {
+		const output: any[] = [
+			{ type: 'open_webui:context_compaction', id: 'cc1', summary: 's' },
+			{ type: 'image_generation_call', id: 'img1', result: 'abc' }
+		];
+		for (let n = 0; n < 200; n++) {
+			output.push({ type: 'message', id: `m${n}`, content: [{ type: 'output_text', text: `n ${n}` }] });
+		}
+		const { hiddenTotals, hiddenSteps } = selectOutputWindow(output, 50, { live: false });
+		expect(hiddenSteps).toBeGreaterThan(2);
+		expect(hiddenTotals.compactionCount).toBe(1);
+		expect(hiddenTotals.imageCount).toBe(1);
 	});
 });
 
