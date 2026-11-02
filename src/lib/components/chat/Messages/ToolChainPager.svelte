@@ -35,9 +35,11 @@
 			'Hidden above: {{COUNT}} tool call',
 			'Hidden above: {{COUNT}} tool calls'
 		);
-		const parts: Array<{ text: string; error?: boolean }> = [
-			{ text: tools.length ? `${calls} (${tools.join(', ')})` : calls }
-		];
+		// fork: no "0 tool calls" when only messages or thoughts are hidden
+		const parts: Array<{ text: string; error?: boolean }> =
+			hiddenTotals.toolCallCount > 0
+				? [{ text: tools.length ? `${calls} (${tools.join(', ')})` : calls }]
+				: [];
 		if (hiddenTotals.failedCount > 0) {
 			parts.push({
 				text: $i18n.t('{{COUNT}} failed or rejected', { COUNT: number(hiddenTotals.failedCount) }),
@@ -81,6 +83,9 @@
 			parts.push({
 				text: plural(hiddenTotals.imageCount, '{{COUNT}} image', '{{COUNT}} images')
 			});
+		}
+		if (hiddenTotals.toolCallCount === 0 && parts.length) {
+			parts[0] = { ...parts[0], text: `${$i18n.t('Hidden above:')} ${parts[0].text}` };
 		}
 		return parts;
 	})();
