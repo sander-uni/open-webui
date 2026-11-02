@@ -123,6 +123,7 @@
 			totalSteps={outputWindow.totalSteps}
 			hiddenTotals={outputWindow.hiddenTotals}
 			hiddenSteps={outputWindow.hiddenSteps}
+			keptGroupSize={outputWindow.keptGroupSize}
 			pageSize={displaySettings.page_size}
 			autoLoad={displaySettings.auto_load}
 			bind:visibleSteps
@@ -207,6 +208,7 @@
 							totalSteps={outputWindow.totalSteps}
 							hiddenTotals={outputWindow.hiddenTotals}
 							hiddenSteps={outputWindow.hiddenSteps}
+							keptGroupSize={outputWindow.keptGroupSize}
 							pageSize={displaySettings.page_size}
 							autoLoad={displaySettings.auto_load}
 							bind:visibleSteps

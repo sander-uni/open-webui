@@ -249,7 +249,9 @@ describe('tool-chain output window', () => {
 			},
 			hiddenRun: null,
 			runStart: 0,
-			groupStarts: new Map()
+			groupStarts: new Map(),
+			keptWhole: 0,
+			keptGroupSize: 0
 		});
 		const output = [
 			{ type: 'message', content: [{ text: 'one' }] },
@@ -328,10 +330,17 @@ describe('tool-chain window fixes', () => {
 	});
 
 	it('pins approvals always, but unfinished calls only while the reply is live', () => {
-		const output = chain(100);
-		output.splice(5, 1); // c1 lost its result, as after a crash
-		output[1] = { ...output[1], status: 'requires_approval' };
-		output.splice(2, 1); // c0 waits for approval, no result
+		const note = (id: string): OutputItem => ({ type: 'message', id, content: [{ text: id }] });
+		const tail = chain(100).slice(6);
+		const output: OutputItem[] = [
+			reason('r0'),
+			call('c0', { status: 'requires_approval' }), // waits for approval, no result
+			note('n0'), // text between them, or c0's cluster would bring c1 in
+			reason('r1'),
+			call('c1'), // lost its result, as after a crash
+			note('n1'),
+			...tail
+		];
 		const live = selectOutputWindow(output, 10, { live: true }).output.map((item) => item.id);
 		const done = selectOutputWindow(output, 10, { live: false }).output.map((item) => item.id);
 		expect(live).toContain('c0');
@@ -412,7 +421,7 @@ describe('tool-chain window fixes', () => {
 		const output = chain(200);
 		output[1] = { ...output[1], status: 'pending' };
 		output.splice(2, 1);
-		const window = selectOutputWindow(output, 50, { live: false });
+		const window = selectOutputWindow(output, 50, { live: true });
 		expect(window.output[1].id).toBe('c0');
 		// Everything not shown belongs to the one group the window renders.
 		expect(window.hiddenRun?.steps).toBe(window.hiddenSteps);
@@ -508,7 +517,7 @@ it('counts tool names that coincide with Object prototype properties', () => {
 	const output = chain(100).map((item) =>
 		item.type === 'function_call' ? { ...item, name: 'toString' } : item
 	);
-	const window = selectOutputWindow(output, 50, { live: false });
+	const window = selectOutputWindow(output, 50, { live: true });
 	expect(window.hiddenTotals.toolCounts.toString).toBe(75);
 	expect(window.hiddenRun?.toolCounts.toString).toBe(75);
 });
@@ -521,4 +530,194 @@ it('skips hidden embed parsing when embeds are disabled', () => {
 		}
 	});
 	expect(() => selectOutputWindow(output, 50, { live: false, includeEmbeds: false })).not.toThrow();
+});
+
+describe('whole clusters (fork): the window never starts inside one once the reply is done', () => {
+	const call = (id: string, extra: Partial<OutputItem> = {}): OutputItem => ({
+		type: 'function_call',
+		id,
+		call_id: id,
+		name: 'run_command',
+		status: 'completed',
+		arguments: '{}',
+		...extra
+	});
+	const result = (id: string): OutputItem => ({
+		type: 'function_call_output',
+		id: `out-${id}`,
+		call_id: id,
+		output: [{ type: 'input_text', text: `result ${id}` }]
+	});
+	const note = (id: string): OutputItem => ({
+		type: 'message',
+		id,
+		content: [{ type: 'output_text', text: id }]
+	});
+	/** n steps in one cluster: each call is one step, its result is not. */
+	const cluster = (prefix: string, n: number): OutputItem[] =>
+		Array.from({ length: n }, (_, i) => [call(`${prefix}${i}`), result(`${prefix}${i}`)]).flat();
+	const notes = (prefix: string, n: number) =>
+		Array.from({ length: n }, (_, i) => note(`${prefix}${i}`));
+	const stepsOf = (window: { output: OutputItem[] }) =>
+		window.output.filter((item) => item.type !== 'function_call_output');
+	/** A step's cluster is whole: every call of the full output's run of calls is in the window. */
+	const runs = (output: OutputItem[]) => {
+		const found: OutputItem[][] = [];
+		let current: OutputItem[] = [];
+		for (const item of output) {
+			if (item.type === 'message') {
+				if (current.length) found.push(current);
+				current = [];
+			} else if (item.type === 'function_call') current.push(item);
+		}
+		if (current.length) found.push(current);
+		return found;
+	};
+
+	it("the owner's case: 23 steps, then a cluster of 343 the page cut lands in", () => {
+		const output = [...notes('old', 30), ...cluster('c', 343), ...notes('new', 23)];
+		const window = selectOutputWindow(output, 50, { live: false });
+		expect(window.totalSteps).toBe(396);
+		expect(window.hiddenSteps).toBe(30);
+		expect(window.keptWhole).toBe(343 - 27);
+		expect(window.keptGroupSize).toBe(343);
+		expect(window.hiddenRun).toBeNull();
+		expect(window.output.filter((item) => item.type === 'function_call')).toHaveLength(343);
+		expect(window.output.filter((item) => item.type === 'function_call_output')).toHaveLength(343);
+		const items = buildWindowDisplayItems(window.output, window);
+		const group = items.find((item) => item.type === 'detail_group') as any;
+		expect(group.tokens).toHaveLength(343);
+	});
+
+	it('a reply that is one cluster of 600 shows all of it', () => {
+		const window = selectOutputWindow(cluster('c', 600), 50, { live: false });
+		expect(window.hiddenSteps).toBe(0);
+		expect(window.keptGroupSize).toBe(600);
+		expect(window.keptWhole).toBe(550);
+	});
+
+	it('adds nothing and says nothing when the cut falls exactly between clusters', () => {
+		const output = [...notes('a', 10), ...cluster('c', 40), ...notes('b', 10)];
+		const window = selectOutputWindow(output, 50, { live: false });
+		expect(window.hiddenSteps).toBe(10);
+		expect(window.keptWhole).toBe(0);
+		expect(window.keptGroupSize).toBe(0);
+	});
+
+	it('says nothing once everything is shown on request', () => {
+		const window = selectOutputWindow(cluster('c', 600), Infinity, { live: false });
+		expect(window.hiddenSteps).toBe(0);
+		expect(window.keptGroupSize).toBe(0);
+	});
+
+	it('still slides while the reply streams, so a token never rebuilds the whole cluster', () => {
+		const output = [...notes('old', 30), ...cluster('c', 343), ...notes('new', 23)];
+		const window = selectOutputWindow(output, 50, { live: true });
+		expect(window.totalSteps - window.hiddenSteps).toBe(50);
+		expect(window.keptWhole).toBe(0);
+		expect(window.hiddenRun?.steps).toBe(343 - 27);
+	});
+
+	it('the same steps stream, then finish: the group keeps its id', () => {
+		const output = [...notes('old', 30), ...cluster('c', 343), ...notes('new', 23)];
+		const idOf = (live: boolean) => {
+			const window = selectOutputWindow(output, 50, { live });
+			return buildWindowDisplayItems(window.output, window).find((i) => i.type === 'detail_group')?.id;
+		};
+		expect(idOf(true)).toBeDefined();
+		expect(idOf(true)).toBe(idOf(false));
+	});
+
+	it('a pinned approval inside a hidden cluster brings that cluster in', () => {
+		const output = [
+			...notes('a', 5),
+			call('pin', { status: 'pending' }),
+			...cluster('c', 100),
+			...notes('b', 60)
+		];
+		const window = selectOutputWindow(output, 50, { live: false });
+		expect(window.output.some((item) => item.id === 'pin')).toBe(true);
+		expect(window.output.filter((item) => item.type === 'function_call')).toHaveLength(101);
+		expect(window.keptGroupSize).toBe(101);
+		// the notes in between, and the first ones, stay hidden
+		expect(window.hiddenSteps).toBe(15);
+	});
+
+	it('an ask_user waiting in the input area stays with its cluster and is not lost', () => {
+		const ask = call('ask', { name: 'ask_user', status: 'in_progress' });
+		const output = [...cluster('a', 30), ask, result('ask'), ...cluster('b', 30)];
+		const window = selectOutputWindow(output, 10, { live: false });
+		expect(window.hiddenSteps).toBe(0);
+		const group = buildWindowDisplayItems(window.output, window)[0] as any;
+		expect(group.tokens).toHaveLength(60);
+	});
+
+	it('still never reads bodies of hidden clusters', () => {
+		const output = [...cluster('a', 200), note('split'), ...cluster('b', 200), note('last')];
+		for (const item of output.slice(0, 400)) {
+			if (item.type !== 'function_call_output') continue;
+			Object.defineProperty(item, 'output', {
+				get: () => {
+					throw new Error('hidden result read');
+				}
+			});
+		}
+		const window = selectOutputWindow(output, 50, { live: false });
+		expect(() => buildWindowDisplayItems(window.output, window)).not.toThrow();
+		expect(window.keptGroupSize).toBe(200);
+		expect(window.hiddenSteps).toBe(201); // cluster a and the note after it
+		expect(window.hiddenRun).toBeNull();
+	});
+
+	it('keeps parallel calls and results that arrive out of order', () => {
+		const output = [
+			...notes('a', 60),
+			call('p1'),
+			call('p2'),
+			result('p2'),
+			result('p1'),
+			...cluster('c', 40),
+			...notes('b', 20)
+		];
+		const window = selectOutputWindow(output, 30, { live: false });
+		for (const id of ['p1', 'p2', 'out-p1', 'out-p2'])
+			expect(window.output.some((item) => item.id === id)).toBe(true);
+		expect(window.keptGroupSize).toBe(42);
+	});
+
+	it('every reveal shows more, whatever the shape, until nothing is hidden', () => {
+		// The page line's click: limit = what is shown + page size.
+		let seed = 12345;
+		const random = (n: number) => {
+			seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+			return seed % n;
+		};
+		for (let trial = 0; trial < 200; trial++) {
+			const output: OutputItem[] = [];
+			for (let part = 0, parts = 1 + random(12); part < parts; part++) {
+				const prefix = `t${trial}p${part}x`;
+				if (random(3) === 0) output.push(...notes(prefix, 1 + random(4)));
+				else output.push(...cluster(prefix, [1, 2, 3, 49, 50, 51, 120][random(7)]));
+				if (random(5) === 0) output.push(call(`${prefix}pin`, { status: 'pending' }));
+			}
+			const page = [1, 2, 10, 50][random(4)];
+			let window = selectOutputWindow(output, page, { live: false });
+			for (let round = 0; round < 500; round++) {
+				const shown = window.totalSteps - window.hiddenSteps;
+				// nothing cut: each run of calls is wholly in or wholly out
+				const inWindow = new Set(window.output.map((item) => item.call_id ?? item.id));
+				for (const run of runs(output)) {
+					const count = run.filter((item) => inWindow.has(item.call_id)).length;
+					expect(count === 0 || count === run.length, `trial ${trial} page ${page}`).toBe(true);
+				}
+				expect(window.hiddenRun).toBeNull();
+				expect(stepsOf(window).length).toBe(shown);
+				if (window.hiddenSteps === 0) break;
+				const next = selectOutputWindow(output, shown + page, { live: false });
+				expect(next.hiddenSteps, `trial ${trial} page ${page}`).toBeLessThan(window.hiddenSteps);
+				window = next;
+			}
+			expect(window.hiddenSteps).toBe(0);
+		}
+	});
 });

@@ -11,6 +11,8 @@
 	export let pageSize = OUTPUT_PAGE_SIZE;
 	export let autoLoad = true;
 	export let hiddenTotals: HiddenTotals | null = null;
+	// fork: size of a cluster kept whole because the cut landed inside it (0 = none).
+	export let keptGroupSize = 0;
 	// Steps added only because new rounds arrived while you were scrolled away from the
 	// bottom. Bound by the parent so it survives this component being re-created.
 	export let autoGrown = 0;
@@ -140,7 +142,9 @@
 		const root = scrollRoot;
 		const height = root?.scrollHeight ?? 0;
 		const top = root?.scrollTop ?? 0;
-		visibleSteps = amount === Infinity ? Infinity : visibleSteps + amount;
+		// fork: from what is shown, which can be far more than the limit (a cluster kept whole, pins):
+		// adding to the limit alone could show nothing new, and the button would look dead.
+		visibleSteps = amount === Infinity ? Infinity : totalSteps - hiddenSteps + amount;
 		await tick();
 		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 		if (root) {
@@ -214,7 +218,14 @@
 					{$i18n.t('Showing {{COUNT}} of {{TOTAL}} steps', {
 						COUNT: number(totalSteps - hiddenSteps),
 						TOTAL: number(totalSteps)
-					})}
+					})}{#if keptGroupSize > 0}
+						<!-- an expression: the compiler trims plain whitespace at the start of a block -->
+						{' · '}<span class="tool-chain-kept">
+							{$i18n.t('kept a group of {{COUNT}} steps together', {
+								COUNT: number(keptGroupSize)
+							})}
+						</span>
+					{/if}
 				</span>
 				<div class="flex gap-3">
 					{#if hiddenSteps > 0}

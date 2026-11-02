@@ -148,6 +148,20 @@ describe('tool media and progress after their step', () => {
 describe('paging with tool media', () => {
 	const long = () => Array.from({ length: 30 }, (_, i) => step(`s${i}`, true, i === 10 ? 'make_image' : 'run_command')).flat();
 
+	it('media inside a cluster brought in whole sits right after its step', () => {
+		const note: OutputItem = { type: 'message', id: 'n', content: [{ type: 'output_text', text: 'note' }] };
+		const cluster = Array.from({ length: 100 }, (_, i) => step(`k${i}`)).flat();
+		const output = [...long(), note, ...cluster, note];
+		const extras = buildToolCallExtras(output, [picture('p', 'k95')], []);
+		// the cut lands before k95's media ends its group, which is cut, so it comes in whole
+		const window = selectOutputWindow(output, 20, { live: false, extras });
+		const items = buildWindowDisplayItems(window.output, window, extras);
+		expect(window.keptGroupSize).toBe(192);
+		expect(types(items)).toEqual(['detail_group', 'tool_media', 'detail_group', 'message']);
+		expect((items[0] as any).tokens.at(-1).attributes.id).toBe('k95');
+		expect(window.hiddenTotals.mediaCount).toBe(0);
+	});
+
 	it('counts media of hidden steps and shows it again with its step', () => {
 		const output = long();
 		const extras = buildToolCallExtras(output, [picture('p', 's10')], []);
@@ -235,8 +249,12 @@ describe('robustness', () => {
 		const pending = (id: string): OutputItem => ({ type: 'function_call', id, call_id: id, name: 'run', status: 'pending', arguments: '{}' });
 		const output: OutputItem[] = [pending('pin'), ...step('b'), ...step('c')];
 		const extras = buildToolCallExtras(output, [picture('p', 'b')], []);
-		const window = selectOutputWindow(output, 2, { live: false, extras });
+		// live: a finished reply brings the pin's whole cluster in (below)
+		const window = selectOutputWindow(output, 2, { live: true, extras });
+		expect(window.hiddenSteps).toBeGreaterThan(0);
 		expect(window.hiddenRun?.steps).toBe(window.hiddenSteps);
+		const done = selectOutputWindow(output, 2, { live: false, extras });
+		expect(types(buildWindowDisplayItems(done.output, done, extras))).toEqual(['detail_group', 'tool_media', 'detail_group']);
 	});
 });
 
@@ -292,7 +310,8 @@ describe('round 3', () => {
 		const pending: OutputItem = { type: 'function_call', id: 'A', call_id: 'A', name: 'run', status: 'pending', arguments: '{}' };
 		const output: OutputItem[] = [pending, ...triple('B'), ...triple('C')];
 		const extras = buildToolCallExtras(output, [picture('p', 'B')], []);
-		const window = selectOutputWindow(output, 2, { live: false, extras });
+		// live: only then can the media between them still be hidden
+		const window = selectOutputWindow(output, 2, { live: true, extras });
 		const paged = buildWindowDisplayItems(window.output, window, extras).map((i) => i.id);
 		const full = selectOutputWindow(output, Infinity, { live: false, extras });
 		const fullIds = buildWindowDisplayItems(full.output, full, extras).map((i) => i.id);

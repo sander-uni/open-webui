@@ -81,6 +81,9 @@ export type OutputWindow = {
 	groupStarts: Map<number, number>;
 	/** fork: extras for this window: a reused call id's media belongs to its first call in the full output. */
 	extras?: ToolCallExtras;
+	/** fork: steps added because the cut landed inside a cluster, and the largest such cluster's size. */
+	keptWhole: number;
+	keptGroupSize: number;
 };
 
 export type OutputWindowOptions = {
@@ -162,7 +165,10 @@ function computeGroupStarts(
 			start = -1;
 			return;
 		}
-		if (DETAIL_TYPES.has(item.type ?? '') && !isSkippedCall(item)) {
+		if (isSkippedCall(item)) {
+			// Renders in the input area, so it never opens a group, but it stays with the one it is in.
+			if (start >= 0) starts.set(index, start);
+		} else if (DETAIL_TYPES.has(item.type ?? '')) {
 			if (start < 0) start = index;
 			starts.set(index, start);
 		}
@@ -255,6 +261,9 @@ export function selectOutputWindow(
 		}
 	}
 
+	const groupEnds = groupEndIndexes(output, extras); // fork
+	const groupStarts = computeGroupStarts(output, calls, groupEnds); // fork
+
 	const count =
 		limit === Infinity
 			? steps.length
@@ -275,6 +284,30 @@ export function selectOutputWindow(
 			(live && !hasResult && (status === 'in_progress' || status === 'completed'))
 		) {
 			selected.add(index);
+		}
+	}
+
+	// fork: the window never starts inside a cluster. A cluster partly in the window comes in whole
+	// (it renders collapsed, so this adds no page elements until it is opened), and the paging line
+	// says so. Not while the reply streams: this runs on every token, and the last cluster would
+	// rebuild thousands of steps each time (about 10 ms for the largest real one, more when open).
+	let keptWhole = 0;
+	let keptGroupSize = 0;
+	if (!live && selected.size < steps.length) {
+		const sizes = new Map<number, number>();
+		const inWindow = new Set<number>();
+		for (const index of steps) {
+			const group = groupStarts.get(index);
+			if (group === undefined) continue;
+			sizes.set(group, (sizes.get(group) ?? 0) + 1);
+			if (selected.has(index)) inWindow.add(group);
+		}
+		for (const index of steps) {
+			const group = groupStarts.get(index);
+			if (group === undefined || !inWindow.has(group) || selected.has(index)) continue;
+			selected.add(index);
+			keptWhole++;
+			keptGroupSize = Math.max(keptGroupSize, sizes.get(group) ?? 0);
 		}
 	}
 
@@ -348,8 +381,6 @@ export function selectOutputWindow(
 	// group. Their counts and embeds keep the collapsed group header accurate.
 	let hiddenRun: HiddenRunSummary | null = null;
 	let runStart = indexes[0] ?? 0;
-	const groupEnds = groupEndIndexes(output, extras); // fork
-	const groupStarts = computeGroupStarts(output, calls, groupEnds); // fork
 	if (indexes.length && DETAIL_TYPES.has(output[indexes[0]]?.type ?? '')) {
 		const summary = emptySummary();
 		const earliest: Record<string, number> = Object.create(null);
@@ -435,7 +466,9 @@ export function selectOutputWindow(
 		hiddenRun,
 		runStart,
 		groupStarts,
-		extras: windowExtras
+		extras: windowExtras,
+		keptWhole,
+		keptGroupSize
 	};
 }
 
