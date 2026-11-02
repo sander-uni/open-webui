@@ -25,6 +25,7 @@
 
 	import {
 		chatId,
+		chatParams as chatParamsStore,
 		config,
 		type Model,
 		models,
@@ -530,6 +531,7 @@
 	};
 
 	let params = {};
+	$: chatParamsStore.set(params); // fork: Integrations' skills line
 	let chatVariables = {};
 	let showChatVariablesModal = false;
 	let loadedChatIdProp = '';

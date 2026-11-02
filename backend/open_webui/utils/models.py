@@ -53,6 +53,8 @@ def public_model_params(params):
     )
     if 'compact_token_threshold' in params:
         public['compact_token_threshold'] = params['compact_token_threshold']
+    if params.get('function_calling'):  # fork: Integrations' skills line must know it
+        public['function_calling'] = params['function_calling']
     return public
 
 

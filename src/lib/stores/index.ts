@@ -59,6 +59,7 @@ export const shortCodesToEmojis = writable(
 export const TTSWorker = writable(null);
 
 export const chatId = writable('');
+export const chatParams = writable<{ function_calling?: string | null }>({}); // fork: this chat's advanced params
 export const chatTitle = writable('');
 
 type ChannelListItem = {

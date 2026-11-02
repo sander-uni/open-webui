@@ -14,6 +14,8 @@
 		user,
 		tools as _tools,
 		skills as _skills,
+		models as _models,
+		chatParams,
 		toolServers
 	} from '$lib/stores';
 
@@ -102,6 +104,30 @@
 
 	$: toolIds = Object.keys(tools ?? {});
 	$: skillIds = Object.keys(skills ?? {});
+	// fork: with built-in skills every active skill is listed to the model, and a switch only loads
+	// its text from the start (middleware.py, activated_skill_ids). Said only where that holds:
+	// otherwise the switch is the only way to give a skill, or does nothing (lazy loading).
+	$: skillsAlwaysListed =
+		!$config?.features?.enable_skill_lazy_loading &&
+		selectedModels.length > 0 &&
+		selectedModels.every((id) => {
+			const model = $_models?.find((model) => model.id === id);
+			const info = model?.info;
+			const functionCalling =
+				$chatParams?.function_calling ||
+				$settings?.params?.function_calling ||
+				info?.params?.function_calling ||
+				$config?.features?.default_function_calling; // Chat.svelte's order, then main.py's
+			return (
+				!!info &&
+				model?.owned_by !== 'arena' && // the model that answers is picked later
+				// without the capability Chat.svelte sends no terminal, so its skills cannot load
+				(!$terminalSkills?.length || info.meta?.capabilities?.terminal !== false) &&
+				info.meta?.capabilities?.builtin_tools !== false &&
+				info.meta?.builtinTools?.skills !== false &&
+				functionCalling !== 'legacy'
+			);
+		});
 
 	$: if (show && toolQuery !== searchedToolQuery) {
 		scheduleToolSearch();
@@ -699,6 +725,13 @@
 					</button>
 
 					<SearchInput bind:value={skillQuery} placeholder={$i18n.t('Search skills')} />
+
+					{#if skillsAlwaysListed}
+						<!-- fork -->
+						<div class="skills-always-listed px-2 py-1 text-xs text-gray-500">
+							{$i18n.t('All skills are available to the model. On = loaded from the start.')}
+						</div>
+					{/if}
 
 					<div class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin">
 						{#if skillIds.length === 0}

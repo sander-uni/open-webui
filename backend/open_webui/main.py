@@ -2370,6 +2370,8 @@ async def get_app_config(request: Request):
         'direct.integrations.enable',
         'terminal_server.connections',
         'folders.enable',
+        'skills.lazy_loading.enable',  # fork
+        'models.default_params',  # fork
         'folders.max_file_count',
         'channels.enable',
         'channels.encryption.enable',
@@ -2478,6 +2480,9 @@ async def get_app_config(request: Request):
                         for connection in config.get('terminal_server.connections') or []
                     ),
                     'enable_folders': config.get('folders.enable'),
+                    # fork: Integrations' skills line
+                    'enable_skill_lazy_loading': config.get('skills.lazy_loading.enable'),
+                    'default_function_calling': (config.get('models.default_params') or {}).get('function_calling'),
                     'folder_max_file_count': config.get('folders.max_file_count'),
                     'enable_channels': config.get('channels.enable'),
                     'enable_encrypted_channels': config.get('channels.encryption.enable'),
