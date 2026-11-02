@@ -3,7 +3,7 @@
 	// It is mounted under every reply that has no text yet, for every model (cloud ones too),
 	// so it draws nothing unless the manager has something to say about this model.
 	import { toast } from 'svelte-sonner';
-	import { models, user } from '$lib/stores';
+	import { models, settings, user } from '$lib/stores';
 	import { cancelManagedLoad, loadManagedModel } from '$lib/apis/model-manager';
 	import OperationPlan from './OperationPlan.svelte';
 	import {
@@ -51,7 +51,10 @@
 	// min-h-8: a usable touch target on iOS.
 	const btn =
 		'min-h-8 rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs disabled:opacity-50 dark:border-white/[0.08]';
-	$: tech = [state?.detail, state?.log_tail].filter(Boolean).join('\n');
+	// Fork: the log is a debugging aid. Off (default): it only appears after a failure,
+	// behind a closed toggle; Settings > Interface > "Show model loading details" opens it again.
+	$: showDetails = $settings?.showModelLoadDetails ?? false;
+	$: tech = showDetails || error ? [state?.detail, state?.log_tail].filter(Boolean).join('\n') : '';
 	$: offlineHelp = admin
 		? 'Check your connection, then open Admin Settings > Model Manager and check the launcher.'
 		: 'Check your connection and try again in a minute. If this continues, ask the admin.';
@@ -75,7 +78,7 @@
 		</div>
 		{#if !offlineId && show}
 			{#if op || error}
-				<OperationPlan operation={op} problem={error} {admin} technical={tech} technicalOpen showSteps={false} />
+				<OperationPlan operation={op} problem={error} {admin} technical={tech} technicalOpen={showDetails} showSteps={false} />
 			{/if}
 			{#if op || view.waiting}
 				<p class="mt-1">{state?.ux?.waiting_action}</p>
@@ -141,7 +144,7 @@
 		</div>
 		{#if !offlineId && show}
 			{#if op || error}
-				<OperationPlan operation={op} problem={error} {admin} technical={tech} technicalOpen showSteps={false} />
+				<OperationPlan operation={op} problem={error} {admin} technical={tech} technicalOpen={showDetails} showSteps={false} />
 			{/if}
 			{#if op || view.waiting}
 				<p class="mt-1">{state?.ux?.waiting_action}</p>

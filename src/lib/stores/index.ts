@@ -266,6 +266,7 @@ type Settings = {
 	detectArtifacts?: boolean;
 	showUpdateToast?: boolean;
 	showChangelog?: boolean;
+	showModelLoadDetails?: boolean; // fork: model manager log in chat while loading
 	showEmojiInCall?: boolean;
 	voiceInterruption?: boolean;
 	collapseCodeBlocks?: boolean;

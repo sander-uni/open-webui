@@ -114,6 +114,8 @@
 	// Admin - Show Update Available Toast
 	let showUpdateToast = true;
 	let showChangelog = true;
+	// fork: the model manager's log while a model loads or unloads (off: only on failure, collapsed)
+	let showModelLoadDetails = false;
 
 	// File
 	let defaultUploadContext: 'full' | 'focused' = 'focused';
@@ -346,6 +348,7 @@
 		showUsername = currentSettings?.showUsername ?? false;
 		showUpdateToast = currentSettings?.showUpdateToast ?? true;
 		showChangelog = currentSettings?.showChangelog ?? true;
+		showModelLoadDetails = currentSettings?.showModelLoadDetails ?? false;
 
 		showEmojiInCall = currentSettings?.showEmojiInCall ?? false;
 		voiceInterruption = currentSettings?.voiceInterruption ?? false;
@@ -791,6 +794,36 @@
 			</div>
 			<p class={settingDescriptionClass}>
 				{$i18n.t('Open the changelog modal after sign-in when enabled.')}
+			</p>
+		</div>
+
+		<!-- fork: model manager technical details in chat -->
+		<div>
+			<div class={settingRowClass}>
+				<label
+					id="model-load-details-label"
+					class={settingLabelClass}
+					for="model-load-details-label-control"
+				>
+					{$i18n.t('Show model loading details')}
+				</label>
+
+				<div class={settingControlClass}>
+					<Switch
+						ariaLabelledbyId="model-load-details-label"
+						tooltip={true}
+						bind:state={showModelLoadDetails}
+						inherited={isDefaultSetting('showModelLoadDetails')}
+						on:change={() => {
+							saveSettings({ showModelLoadDetails });
+						}}
+					/>
+				</div>
+			</div>
+			<p class={settingDescriptionClass}>
+				{$i18n.t(
+					'Show the technical log while a model or ComfyUI loads and unloads. When off, it only appears behind a toggle if something fails.'
+				)}
 			</p>
 		</div>
 	{/if}
