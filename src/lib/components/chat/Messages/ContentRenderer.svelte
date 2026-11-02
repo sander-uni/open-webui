@@ -72,6 +72,8 @@
 	export let content;
 	/** @type {import('./structuredOutput').OutputItem[]} */
 	export let output = [];
+	export let files = []; // fork: tool media shown after its step
+	export let statusHistory = []; // fork
 
 	export let history;
 	export let messageId;
@@ -298,6 +300,8 @@
 			{chatId}
 			{messageId}
 			{output}
+			{files}
+			{statusHistory}
 			{model}
 			{save}
 			{preview}

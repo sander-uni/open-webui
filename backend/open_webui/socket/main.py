@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pycrdt as Y
 import socketio
+from open_webui.utils.tool_call_events import message_files_lock  # fork
 from open_webui.config import (
     CORS_ALLOW_ORIGIN,
 )
@@ -1737,19 +1738,20 @@ async def get_event_emitter(request_info, update_db=True):
                 )
 
             elif event_type == 'files':
-                files = event_data.get('data', {}).get('files', [])
-                existing_files = await Chats.get_message_metadata(chat_id, message_id, 'files')
-                if isinstance(existing_files, list):
-                    files.extend(existing_files)
-
-                await Chats.upsert_message_to_chat_by_id_and_message_id(
-                    chat_id,
-                    message_id,
-                    {
-                        'files': files,
-                    },
-                    touch=False,
-                )
+                files = (event_data.get('data') or {}).get('files') or []
+                if isinstance(files, list):
+                    # fork: sub-agents run at the same time; two saves must not lose each other's files
+                    async with message_files_lock(chat_id, message_id):
+                        existing_files = await Chats.get_message_metadata(chat_id, message_id, 'files')
+                        files = [*files, *(existing_files if isinstance(existing_files, list) else [])]
+                        await Chats.upsert_message_to_chat_by_id_and_message_id(
+                            chat_id,
+                            message_id,
+                            {
+                                'files': files,
+                            },
+                            touch=False,
+                        )
 
             elif event_type in ('source', 'citation'):
                 data = event_data.get('data', {})

@@ -69,6 +69,12 @@
 				text: plural(hiddenTotals.compactionCount, '{{COUNT}} compaction', '{{COUNT}} compactions')
 			});
 		}
+		if (hiddenTotals.mediaCount > 0) {
+			// fork
+			parts.push({
+				text: plural(hiddenTotals.mediaCount, '{{COUNT}} media file', '{{COUNT}} media files')
+			});
+		}
 		if (hiddenTotals.imageCount > 0) {
 			parts.push({
 				text: plural(hiddenTotals.imageCount, '{{COUNT}} image', '{{COUNT}} images')

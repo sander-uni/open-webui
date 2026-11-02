@@ -127,6 +127,7 @@
 	import { getTools } from '$lib/apis/tools';
 	import { getSkills } from '$lib/apis/skills';
 	import { uploadFile } from '$lib/apis/files';
+	import { mergeToolFiles } from './Messages/toolCallExtras'; // fork
 	import { createOpenAITextStream } from '$lib/apis/streaming';
 	import { getFunctions } from '$lib/apis/functions';
 	import { initiateOAuthRedirect } from '$lib/apis/configs';
@@ -1647,9 +1648,14 @@
 				} else if (type === 'chat:message:voice') {
 					message.meta = { ...message.meta, voice: data.voice };
 				} else if (type === 'chat:message:files' || type === 'files') {
-					message.files = isTemporaryChatId(event.chat_id)
-						? [...(message.files ?? []), ...data.files]
-						: data.files;
+					// fork: `files` carries only the new files (the server adds them to the saved ones):
+					// replacing would drop an earlier tool's media from a live reply until a reload.
+					message.files =
+						type === 'files'
+							? mergeToolFiles(message.files, data?.files)
+							: isTemporaryChatId(event.chat_id)
+								? [...(message.files ?? []), ...(data?.files ?? [])]
+								: (data?.files ?? []);
 				} else if (type === 'chat:message:tasks') {
 					chatTasks = data.tasks;
 				} else if (type === 'chat:message:embeds' || type === 'embeds') {

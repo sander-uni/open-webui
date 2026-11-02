@@ -1,9 +1,13 @@
 import {
 	buildOutputDisplayItems,
 	COMPACTION_ITEM_TYPE,
+	getInlineFileFromToolOutput,
+	getMessageText,
 	type OutputDetailToken,
 	type OutputDisplayItem,
-	type OutputItem
+	type OutputItem,
+	type ToolCallExtras,
+	type ToolFile
 } from './structuredOutput';
 import { DEFAULT_TOOL_CHAIN_DISPLAY } from '../../../utils/custom-settings';
 
@@ -59,6 +63,8 @@ export type HiddenTotals = {
 	imageCount: number;
 	/** fork 0.3.5: the user's messages delivered during the reply, among the hidden steps */
 	interjectionCount: number;
+	/** fork: files tools made in the hidden steps; they show again with their step */
+	mediaCount: number;
 };
 
 export type OutputWindow = {
@@ -71,12 +77,18 @@ export type OutputWindow = {
 	hiddenRun: HiddenRunSummary | null;
 	/** Index where the first visible detail group starts in the full output. */
 	runStart: number;
+	/** fork: index -> where its group starts in the full output, so ids survive paging. */
+	groupStarts: Map<number, number>;
+	/** fork: extras for this window: a reused call id's media belongs to its first call in the full output. */
+	extras?: ToolCallExtras;
 };
 
 export type OutputWindowOptions = {
 	/** The reply is still streaming. Only then can a call without a result still be running. */
 	live?: boolean;
 	includeEmbeds?: boolean;
+	/** fork: progress and media shown after a tool's step. */
+	extras?: ToolCallExtras;
 };
 
 function hasText(item: OutputItem): boolean {
@@ -100,16 +112,80 @@ function isStep(item: OutputItem | undefined): boolean {
 	return !!item && (item.type !== 'function_call_output' || hasNote(item)) && !isEmptyMessage(item);
 }
 
+/**
+ * fork: a tool's media follows its group, so the group ends at the last call of that model turn's
+ * block of parallel calls. A progress line does not end a group: it goes away again.
+ */
+function groupEndIndexes(output: OutputItem[], extras?: ToolCallExtras): Set<number> {
+	const ends = new Set<number>();
+	if (!extras?.media.size) return ends;
+	let hasMedia = false;
+	const shown = new Set<string>(); // a reused call id shows its media once, at the first call
+	output.forEach((item, index) => {
+		if (item?.type !== 'function_call') return;
+		const callId = item.call_id ?? item.id ?? '';
+		if (!shown.has(callId) && extras.media.get(callId)?.length) {
+			shown.add(callId);
+			hasMedia = true;
+		}
+		if (output[index + 1]?.type !== 'function_call') {
+			if (hasMedia) ends.add(index);
+			hasMedia = false;
+		}
+	});
+	return ends;
+}
+
+/** A pending ask_user renders in the input area, not as a step in its group. */
+function isSkippedCall(item: OutputItem | undefined): boolean {
+	return (
+		item?.type === 'function_call' &&
+		item.name === 'ask_user' &&
+		['pending', 'in_progress'].includes(item.status ?? '')
+	);
+}
+
+/**
+ * fork: where each detail item's group starts in the FULL output, whatever the window shows. Every
+ * group's id comes from this, so revealing earlier steps never resets a group that is open.
+ */
+function computeGroupStarts(
+	output: OutputItem[],
+	calls: Map<string, OutputItem>,
+	ends: Set<number>
+): Map<number, number> {
+	const starts = new Map<number, number>();
+	let start = -1;
+	output.forEach((item, index) => {
+		if (!item) return;
+		if (!continuesRun(item, calls)) {
+			start = -1;
+			return;
+		}
+		if (DETAIL_TYPES.has(item.type ?? '') && !isSkippedCall(item)) {
+			if (start < 0) start = index;
+			starts.set(index, start);
+		}
+		if (ends.has(index)) start = -1;
+	});
+	return starts;
+}
+
 /** True for items that stay inside one consecutive details group when rendered. */
 function continuesRun(item: OutputItem | undefined, calls: Map<string, OutputItem>): boolean {
 	if (!item) return true;
 	if (DETAIL_TYPES.has(item.type ?? '')) return true;
 	if (item.type === 'function_call_output') {
-		// display_file results may render as an inline file, and a result with the user's
-		// message renders that note: both split the group.
-		return !hasNote(item) && calls.get(item.call_id ?? '')?.name !== 'display_file';
+		if (hasNote(item)) return false; // renders the user's message
+		// fork: only a display_file result that really renders a file splits the group (a failed one
+		// does not). Mirrors buildOutputDisplayItems; only these few results are parsed.
+		const call = calls.get(item.call_id ?? '');
+		return call?.name !== 'display_file' || !getInlineFileFromToolOutput(call, item);
 	}
-	return isEmptyMessage(item);
+	// fork: items that render nothing do not split a group either, as in buildOutputDisplayItems.
+	if (item.type === 'image_generation_call') return typeof item.result !== 'string' || !item.result;
+	if (item.type === COMPACTION_ITEM_TYPE || item.type === 'open_webui:context_compaction') return false;
+	return !getMessageText(item).trim();
 }
 
 // Mirrors buildToolCallToken's display name, so hidden counts match visible ones.
@@ -162,7 +238,7 @@ function emptySummary(): HiddenRunSummary {
 export function selectOutputWindow(
 	output: OutputItem[] = [],
 	limit = OUTPUT_PAGE_SIZE,
-	{ live = true, includeEmbeds = true }: OutputWindowOptions = {}
+	{ live = true, includeEmbeds = true, extras }: OutputWindowOptions = {}
 ): OutputWindow {
 	const steps: number[] = [];
 	const results = new Map<string, number>();
@@ -222,6 +298,16 @@ export function selectOutputWindow(
 		if (output[previous]?.type === 'reasoning') selected.add(previous);
 	}
 
+	// fork: a reused call id's media belongs to its first call
+	const mediaOwners = new Map<string, number>();
+	if (extras?.media.size) {
+		output.forEach((item, index) => {
+			if (item?.type !== 'function_call') return;
+			const callId = item.call_id ?? item.id ?? '';
+			if (!mediaOwners.has(callId)) mediaOwners.set(callId, index);
+		});
+	}
+
 	const indexes = [...selected].sort((a, b) => a - b);
 	const visibleSteps = steps.reduce((total, index) => total + Number(selected.has(index)), 0);
 
@@ -235,7 +321,8 @@ export function selectOutputWindow(
 		failedCount: 0,
 		compactionCount: 0,
 		imageCount: 0,
-		interjectionCount: 0
+		interjectionCount: 0,
+		mediaCount: 0
 	};
 	for (const index of steps) {
 		if (selected.has(index)) continue;
@@ -252,6 +339,8 @@ export function selectOutputWindow(
 			hiddenTotals.toolCallCount++;
 			hiddenTotals.toolCounts[name] = (hiddenTotals.toolCounts[name] ?? 0) + 1;
 			if (item.status === 'failed' || item.status === 'rejected') hiddenTotals.failedCount++;
+			const callId = item.call_id ?? item.id ?? '';
+			if (mediaOwners.get(callId) === index) hiddenTotals.mediaCount += extras?.media.get(callId)?.length ?? 0;
 		}
 	}
 
@@ -259,6 +348,8 @@ export function selectOutputWindow(
 	// group. Their counts and embeds keep the collapsed group header accurate.
 	let hiddenRun: HiddenRunSummary | null = null;
 	let runStart = indexes[0] ?? 0;
+	const groupEnds = groupEndIndexes(output, extras); // fork
+	const groupStarts = computeGroupStarts(output, calls, groupEnds); // fork
 	if (indexes.length && DETAIL_TYPES.has(output[indexes[0]]?.type ?? '')) {
 		const summary = emptySummary();
 		const earliest: Record<string, number> = Object.create(null);
@@ -295,13 +386,20 @@ export function selectOutputWindow(
 		};
 		// Hidden steps before the first visible one, back to where its group starts.
 		let index = indexes[0] - 1;
-		for (; index >= 0 && continuesRun(output[index], calls); index--) addHidden(index);
+		for (; index >= 0 && !groupEnds.has(index) && continuesRun(output[index], calls); index--) addHidden(index);
 		runStart = index + 1;
+		// fork: its first rendered item, as in the full view
+		runStart = groupStarts.get(indexes[0]) ?? runStart;
 		// Hidden steps between visible ones (for example after a pinned approval) render
 		// merged into the same group, up to the first visible step that ends it.
-		for (let next = indexes[0] + 1; next < output.length; next++) {
+		// fork: a group also ends at the end of a call block with media, visible or hidden.
+		const firstGroup = groupStarts.get(indexes[0]);
+		for (let next = indexes[0] + 1; next < output.length && !groupEnds.has(indexes[0]); next++) {
 			if (selected.has(next) && !continuesRun(output[next], calls)) break;
+			const group = groupStarts.get(next);
+			if (group !== undefined && group !== firstGroup) break;
 			addHidden(next);
+			if (groupEnds.has(next)) break;
 		}
 		// The full view lists tool names and embeds in chain order; match it.
 		summary.toolCounts = Object.fromEntries(
@@ -309,6 +407,17 @@ export function selectOutputWindow(
 		);
 		summary.embeds = embeds.sort(([a], [b]) => a - b).map(([, embed]) => embed);
 		if (summary.steps > 0) hiddenRun = summary;
+	}
+
+	// fork: a reused call id's media stays with its first call, or hides with it.
+	let windowExtras = extras;
+	if (extras?.media.size) {
+		const media = new Map<string, ToolFile[]>();
+		for (const [callId, files] of extras.media) {
+			const owner = mediaOwners.get(callId);
+			if (owner !== undefined && selected.has(owner)) media.set(callId, files);
+		}
+		windowExtras = { ...extras, media };
 	}
 
 	return {
@@ -324,7 +433,9 @@ export function selectOutputWindow(
 		hiddenSteps: steps.length - visibleSteps,
 		hiddenTotals,
 		hiddenRun,
-		runStart
+		runStart,
+		groupStarts,
+		extras: windowExtras
 	};
 }
 
@@ -335,18 +446,19 @@ export function selectOutputWindow(
  */
 export function buildWindowDisplayItems(
 	output: OutputItem[],
-	window?: Pick<OutputWindow, 'hiddenRun' | 'runStart'>
+	window?: Pick<OutputWindow, 'hiddenRun' | 'runStart' | 'groupStarts'> & { extras?: ToolCallExtras },
+	extras?: ToolCallExtras
 ): OutputDisplayItem[] {
-	const items = buildOutputDisplayItems(output);
-	const details = output.filter(
-		(item) =>
-			DETAIL_TYPES.has(item.type ?? '') &&
-			!(
-				item.type === 'function_call' &&
-				item.name === 'ask_user' &&
-				['pending', 'in_progress'].includes(item.status ?? '')
-			)
-	);
+	// fork: steps of different groups in the full output stay apart, whatever is hidden between them.
+	const groupStarts = window?.groupStarts;
+	const groupOf = groupStarts
+		? (item: OutputItem) => {
+				const source = sourceIndexes.get(item);
+				return source === undefined ? undefined : groupStarts.get(source);
+			}
+		: undefined;
+	const items = buildOutputDisplayItems(output, window?.extras ?? extras, groupOf);
+	const details = output.filter((item) => DETAIL_TYPES.has(item.type ?? '') && !isSkippedCall(item));
 	let index = 0;
 	items.forEach((item, position) => {
 		const tokens =
@@ -367,12 +479,22 @@ export function buildWindowDisplayItems(
 			item.id = `${item.type}:${item.id}`;
 			return;
 		}
-		const start = position === 0 && window ? window.runStart : first;
+		// fork: from the full output for every group, not only the first
+		const start =
+			(first !== undefined ? window?.groupStarts?.get(first) : undefined) ??
+			(position === 0 && window ? window.runStart : first);
 		if (start !== undefined) item.id = `detail-${start}`;
 		// A group that continues into hidden steps renders as a group, as in the full view.
 		if (position === 0 && window?.hiddenRun && item.type === 'detail_single') {
 			items[0] = { type: 'detail_group', id: item.id, tokens: [item.token] };
 		}
+	});
+	// fork: the list is keyed by id, and a duplicate key would take the page down whatever caused it.
+	const seen = new Set<string>();
+	items.forEach((item) => {
+		const base = item.id;
+		for (let n = 1; seen.has(item.id); n++) item.id = `${base}~${n}`;
+		seen.add(item.id);
 	});
 	return items;
 }

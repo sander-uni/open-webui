@@ -156,6 +156,7 @@ from open_webui.utils.terminals import upload_files_to_terminal
 from open_webui.utils.tool_approval import complete_tool_call, pending_tool_calls
 from open_webui.utils.output_tail import client_accepts_output_tail, output_tail_data  # CUSTOM
 from open_webui.utils.tool_search import apply_tool_search, resolve_tool_call
+from open_webui.utils.tool_call_events import tool_call_event_emitter  # fork
 from open_webui.utils.tools import (
     connect_mcp_server,
     display_file,
@@ -3174,13 +3175,15 @@ async def execute_tool_call(form_data, metadata, event_caller, tool_call):
                         }
                     )
             else:
-                function = await get_updated_tool_function(
-                    function=tool['callable'],
-                    extra_params={
-                        '__messages__': form_data.get('messages', []),
-                        '__files__': metadata.get('files') or [],
-                    },
-                )
+                call_extras = {
+                    '__messages__': form_data.get('messages', []),
+                    '__files__': metadata.get('files') or [],
+                }
+                # fork: workspace tools only (no type); built-in search has its own status rendering
+                tool_emitter = (getattr(tool['callable'], '__extra_params__', None) or {}).get('__event_emitter__')
+                if tool_emitter and not tool_type and tool_call.get('call_id'):
+                    call_extras['__event_emitter__'] = tool_call_event_emitter(tool_emitter, tool_call['call_id'])
+                function = await get_updated_tool_function(function=tool['callable'], extra_params=call_extras)
                 result = await function(**params)
         finally:
             tool_call['ended_at'] = time.time()

@@ -77,6 +77,15 @@
 	import OutputEditView from './OutputEditView.svelte';
 	import { getOutputText, replaceOutputMessageText, type OutputItem } from './structuredOutput';
 	import { snapshotResponseMessage } from './outputWindow';
+	import {
+		cleanStatus,
+		embedsPlayer,
+		isDisplayableFile,
+		isDisplayableStatus,
+		isShownWithToolStep,
+		toolCallIds
+	} from './toolCallExtras'; // fork
+	import ToolMedia from './ToolMedia.svelte'; // fork
 
 	interface MessageType {
 		user_id?: string;
@@ -210,6 +219,14 @@
 	$: visibleResponseContent =
 		getOutputText(message.output) || removeAllDetails(message.content ?? '');
 	$: hasResponseContent = Boolean((message.content ?? '').trim() || message.output?.length);
+	// fork: media and progress of a tool call show right after its step; the rest stays above the reply.
+	$: toolCalls = toolCallIds(message.output, message.files, message.statusHistory);
+	$: topFiles = (Array.isArray(message.files) ? message.files : []).filter(
+		(f) => isDisplayableFile(f) && !isShownWithToolStep(f, toolCalls)
+	);
+	$: topStatusHistory = (Array.isArray(message.statusHistory) ? message.statusHistory : [])
+		.filter((s) => isDisplayableStatus(s) && !isShownWithToolStep(s, toolCalls))
+		.map(cleanStatus);
 
 	let edit = false;
 	let editedContent = '';
@@ -750,22 +767,25 @@
 				<div class="chat-{message.role} w-full min-w-full">
 					<div>
 						{#if model?.info?.meta?.capabilities?.status_updates ?? true}
-							<StatusHistory statusHistory={message?.statusHistory} />
+							<StatusHistory statusHistory={topStatusHistory} />
 						{/if}
 						{#if !message?.done && !(message?.content ?? '').trim()}
 							<!-- fork: the local model manager is loading this reply's model -->
 							<ModelLoadStatus modelId={message?.model ?? ''} inline />
 						{/if}
 
-						{#if message?.files && message.files?.filter( (f) => ['image', 'file'].includes(f.type) ).length > 0}
+						{#if topFiles.length > 0}
 							<div
 								class="my-1 w-full flex overflow-x-auto gap-2 flex-wrap"
 								dir={$settings?.chatDirection ?? 'auto'}
 							>
-								{#each message.files.filter((f) => ['image', 'file'].includes(f.type)) as file}
+								{#each topFiles as file}
 									<div>
 										{#if file.type === 'image' || (file?.content_type ?? '').startsWith('image/')}
 											<Image src={file.url} alt={file.name || $i18n.t('Generated Image')} />
+										{:else if /^(video|audio)\//.test(file?.content_type ?? '') && !embedsPlayer(message.content, file.url)}
+											<!-- fork: no tool step to show it after (legacy function calling); older replies embed their own player -->
+											<ToolMedia files={[file]} />
 										{:else}
 											<FileItem
 												item={file}
@@ -901,6 +921,10 @@
 									messageId={message.id}
 									content={message.content}
 									output={message.output}
+									files={message.files ?? []}
+									statusHistory={(model?.info?.meta?.capabilities?.status_updates ?? true)
+										? (message.statusHistory ?? [])
+										: []}
 									sources={message.sources}
 									floatingButtons={message?.done &&
 										!readOnly &&

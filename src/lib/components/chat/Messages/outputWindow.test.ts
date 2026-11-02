@@ -244,10 +244,12 @@ describe('tool-chain output window', () => {
 				failedCount: 0,
 				compactionCount: 0,
 				imageCount: 0,
-				interjectionCount: 0
+				interjectionCount: 0,
+				mediaCount: 0
 			},
 			hiddenRun: null,
-			runStart: 0
+			runStart: 0,
+			groupStarts: new Map()
 		});
 		const output = [
 			{ type: 'message', content: [{ text: 'one' }] },

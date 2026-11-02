@@ -14,6 +14,8 @@
 	import InterjectionNote from '$lib/components/interjections/InterjectionNote.svelte'; // fork 0.3.3
 	import CompactionStep from '$lib/components/compaction/CompactionStep.svelte'; // fork 0.3.4
 	import ToolChainPager from './ToolChainPager.svelte';
+	import ToolMedia from './ToolMedia.svelte'; // fork
+	import { buildToolCallExtras } from './toolCallExtras'; // fork
 	import {
 		OUTPUT_PAGE_SIZE,
 		selectOutputWindow,
@@ -24,13 +26,16 @@
 	import {
 		type OutputDetailToken,
 		type OutputDisplayItem,
-		type OutputItem
+		type OutputItem,
+		type ToolFile
 	} from './structuredOutput';
 
 	export let id = '';
 	export let chatId = '';
 	export let messageId = '';
 	export let output: OutputItem[] = [];
+	export let files: ToolFile[] = []; // fork
+	export let statusHistory: any[] = []; // fork
 	export let done = true;
 	export let model = null;
 	export let save = false;
@@ -90,13 +95,16 @@
 		visibleSteps = displaySettings.page_size;
 		autoGrown = 0;
 	}
+	$: toolExtras = buildToolCallExtras(output, files, statusHistory, !done); // fork
 	$: outputWindow = selectOutputWindow(output, displaySettings.enabled ? visibleSteps : Infinity, {
 		live: !done,
-		includeEmbeds: allowEmbeds
+		includeEmbeds: allowEmbeds,
+		extras: toolExtras
 	});
 	$: displayItems = buildWindowDisplayItems(
 		outputWindow.output,
-		outputWindow
+		outputWindow,
+		toolExtras
 	) as OutputDisplayItem[];
 	// When hidden steps continue the first group, page inside it: the controls then only
 	// show (and only auto-load) while that group is expanded.
@@ -172,6 +180,14 @@
 		/>
 	{:else if displayItem.type === 'image'}
 		<Image src={displayItem.src} alt={$i18n.t('Generated Image')} />
+	{:else if displayItem.type === 'tool_progress'}
+		<!-- fork -->
+		<div class="tool-progress py-1 text-sm text-gray-500 dark:text-gray-400 break-words line-clamp-3" aria-live="polite">
+			{displayItem.text}
+		</div>
+	{:else if displayItem.type === 'tool_media'}
+		<!-- fork -->
+		<ToolMedia files={displayItem.files} />
 	{:else if displayItem.type === 'detail_group'}
 		<ConsecutiveDetailsGroup
 			id={`${id}-${displayItem.id}`}

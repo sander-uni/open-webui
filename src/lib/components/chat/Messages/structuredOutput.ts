@@ -93,7 +93,36 @@ export type OutputDisplayItem =
 			type: 'context_compaction';
 			id: string;
 			summary: string;
+	  }
+	| {
+			// fork: a running tool's progress line, right after its step
+			type: 'tool_progress';
+			id: string;
+			text: string;
+	  }
+	| {
+			// fork: the pictures, videos and audio a tool made, right after its step
+			type: 'tool_media';
+			id: string;
+			files: ToolFile[];
 	  };
+
+/** fork: a file a tool attached to the reply; call_id comes from utils/tool_call_events.py. */
+export type ToolFile = {
+	type?: string;
+	id?: string;
+	url?: string;
+	name?: string;
+	size?: number;
+	content_type?: string;
+	call_id?: string;
+};
+
+/** fork: what to show right after a tool's step, by call id (toolCallExtras.ts). */
+export type ToolCallExtras = {
+	media: Map<string, ToolFile[]>;
+	progress: Map<string, string>;
+};
 
 /** fork 0.3.4: output item type for ctxproxy's compactions (backend utils/compaction_steps.py). */
 export const COMPACTION_ITEM_TYPE = 'open_webui:ctxproxy_compaction';
@@ -164,7 +193,7 @@ function isDoneStatus(status?: string): boolean {
 	return status === 'completed' || status === 'failed' || status === 'incomplete';
 }
 
-function getMessageText(item: OutputItem): string {
+export function getMessageText(item: OutputItem): string {
 	return getTextFromParts(item.content ?? []);
 }
 
@@ -202,7 +231,7 @@ function parseJSONStringValue(value: unknown): unknown {
 	return parsed;
 }
 
-function getInlineFileFromToolOutput(callItem?: OutputItem, resultItem?: OutputItem) {
+export function getInlineFileFromToolOutput(callItem?: OutputItem, resultItem?: OutputItem) {
 	if (!callItem || !resultItem || callItem.name !== 'display_file') {
 		return null;
 	}
@@ -384,9 +413,16 @@ function buildDetailToken(
 	return null;
 }
 
-export function buildOutputDisplayItems(output: OutputItem[] = []): OutputDisplayItem[] {
+export function buildOutputDisplayItems(
+	output: OutputItem[] = [],
+	extras?: ToolCallExtras,
+	groupOf?: (item: OutputItem) => number | undefined
+): OutputDisplayItem[] {
 	const displayItems: OutputDisplayItem[] = [];
 	const currentDetailTokens: OutputDetailToken[] = [];
+	const afterDetails: OutputDisplayItem[] = []; // fork
+	const mediaShown = new Set<string>(); // fork
+	let currentGroup: number | undefined; // fork
 	const toolOutputByCallId: Record<string, OutputItem> = {};
 	const toolCallByCallId: Record<string, OutputItem> = {};
 
@@ -413,11 +449,24 @@ export function buildOutputDisplayItems(output: OutputItem[] = []): OutputDispla
 			});
 		}
 		currentDetailTokens.length = 0;
+		displayItems.push(...afterDetails);
+		afterDetails.length = 0;
 	};
 
 	output.forEach((item, index) => {
 		if (!item) {
 			return;
+		}
+
+		// fork: one model turn's parallel calls stay one group, with all their media after it;
+		// anything else starts after the media. Same rule as groupEndIndexes in outputWindow.ts.
+		// A progress line never splits a group: it goes away again.
+		if (
+			afterDetails.some((after) => after.type === 'tool_media') &&
+			item.type !== 'function_call_output' &&
+			!(item.type === 'function_call' && output[index - 1]?.type === 'function_call')
+		) {
+			flushDetails();
 		}
 
 		if (item.type === 'function_call_output') {
@@ -469,9 +518,27 @@ export function buildOutputDisplayItems(output: OutputItem[] = []): OutputDispla
 		}
 
 		if (item.type && GROUPABLE_OUTPUT_TYPES.has(item.type)) {
+			// fork: a window keeps the full output's groups, whatever is hidden between its steps
+			const group = groupOf?.(item);
+			if (group !== undefined) {
+				if (group !== currentGroup && currentDetailTokens.length) flushDetails();
+				currentGroup = group;
+			}
 			const token = buildDetailToken(item, index === output.length - 1, toolOutputByCallId);
 			if (token) {
 				currentDetailTokens.push(token);
+			}
+			// fork: a tool's progress and media follow its group, so they stay visible after the step
+			const callId = item.type === 'function_call' ? (item.call_id ?? item.id ?? '') : '';
+			const progress = extras?.progress.get(callId);
+			// A provider can reuse a call id across rounds: its media still shows once.
+			const media = mediaShown.has(callId) ? undefined : extras?.media.get(callId);
+			if (media?.length) mediaShown.add(callId);
+			if (progress && !afterDetails.some((after) => after.id === `progress-${callId}`)) {
+				afterDetails.push({ type: 'tool_progress', id: `progress-${callId}`, text: progress });
+			}
+			if (media?.length) {
+				afterDetails.push({ type: 'tool_media', id: `media-${callId}`, files: media });
 			}
 			return;
 		}
