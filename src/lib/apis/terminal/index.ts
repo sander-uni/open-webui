@@ -422,12 +422,41 @@ export const listTerminalSkills = async (
 	}));
 };
 
+export type TransferProgress = { received: number; total: number | null };
+
+// fork: read a response body while reporting how much has arrived.
+const readBlobWithProgress = async (
+	res: Response,
+	onProgress?: (progress: TransferProgress) => void
+): Promise<Blob | null> => {
+	if (!onProgress || !res.body) return res.blob().catch(() => null);
+	const length = Number(res.headers.get('content-length'));
+	const total = Number.isFinite(length) && length > 0 ? length : null;
+	const reader = res.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let received = 0;
+	onProgress({ received, total });
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			chunks.push(value);
+			received += value.byteLength;
+			onProgress({ received, total });
+		}
+	} catch {
+		return null;
+	}
+	return new Blob(chunks as BlobPart[], { type: res.headers.get('content-type') ?? '' });
+};
+
 export const downloadFileBlob = async (
 	baseUrl: string,
 	apiKey: string,
 	path: string,
 	sessionId?: string,
-	signal?: AbortSignal
+	signal?: AbortSignal,
+	onProgress?: (progress: TransferProgress) => void
 ): Promise<{ blob: Blob; filename: string } | null> => {
 	const url = `${baseUrl.replace(/\/$/, '')}/files/view?path=${encodeURIComponent(path)}`;
 	const headers: Record<string, string> = bearerHeaders(apiKey);
@@ -437,9 +466,45 @@ export const downloadFileBlob = async (
 	if (!res || !res.ok) return null;
 
 	const filename = path.split('/').pop() ?? 'file';
-	const blob = await res.blob().catch(() => null);
+	const blob = await readBlobWithProgress(res, onProgress);
 	if (!blob) return null;
 	return { blob, filename };
+};
+
+// fork: Open WebUI's own proxy (system terminals) is same-origin and accepts the session
+// cookie, so the browser can fetch these URLs itself: a native download with progress, or
+// a <video> that seeks. Direct terminals need their key in a header and cannot use them.
+const proxiedBase = (baseUrl: string, sessionId?: string) =>
+	`${baseUrl.replace(/\/$/, '')}${sessionId ? `/chats/${encodeURIComponent(sessionId)}` : ''}`;
+
+export const terminalFileUrl = (baseUrl: string, path: string, sessionId?: string) =>
+	`${proxiedBase(baseUrl, sessionId)}/files/view?path=${encodeURIComponent(path)}`;
+
+export const terminalMediaUrl = (baseUrl: string, path: string, sessionId?: string) =>
+	`${proxiedBase(baseUrl, sessionId)}/cached-media?path=${encodeURIComponent(path)}`;
+
+// Asks the proxy to copy a media file into its cache; resolves once it can be played.
+export const prepareTerminalMedia = async (
+	baseUrl: string,
+	apiKey: string,
+	path: string,
+	sessionId?: string,
+	signal?: AbortSignal,
+	onProgress?: (progress: TransferProgress) => void
+): Promise<{ url: string } | { error: string }> => {
+	const url = `${terminalMediaUrl(baseUrl, path, sessionId)}&prepare=true`;
+	const headers: Record<string, string> = bearerHeaders(apiKey);
+	for (;;) {
+		const res = await fetch(url, { headers, signal }).catch(() => null);
+		if (signal?.aborted) return { error: 'cancelled' };
+		if (!res) return { error: 'The terminal could not be reached' };
+		const data = await res.json().catch(() => null);
+		if (!res.ok || !data) return { error: data?.error ?? `Loading failed (${res.status})` };
+		onProgress?.({ received: data.received ?? 0, total: data.total ?? null });
+		if (data.status === 'ready') return { url: terminalMediaUrl(baseUrl, path, sessionId) };
+		await new Promise((resolve) => setTimeout(resolve, 500));
+		if (signal?.aborted) return { error: 'cancelled' };
+	}
 };
 
 export const downloadFilePreview = async (
@@ -470,7 +535,8 @@ export const archiveFromTerminal = async (
 	baseUrl: string,
 	apiKey: string,
 	paths: string[],
-	sessionId?: string
+	sessionId?: string,
+	onProgress?: (progress: TransferProgress) => void
 ): Promise<{ blob: Blob; filename: string } | null> => {
 	const url = `${baseUrl.replace(/\/$/, '')}/files/archive`;
 	const headers: Record<string, string> = {
@@ -489,7 +555,7 @@ export const archiveFromTerminal = async (
 	const disposition = res.headers.get('content-disposition') ?? '';
 	const match = disposition.match(/filename="?([^"]+)"?/);
 	const filename = match?.[1] ?? 'download.zip';
-	const blob = await res.blob().catch(() => null);
+	const blob = await readBlobWithProgress(res, onProgress);
 	if (!blob) return null;
 	return { blob, filename };
 };

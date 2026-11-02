@@ -36,6 +36,9 @@
 		readFile,
 		downloadFileBlob,
 		downloadFilePreview,
+		prepareTerminalMedia,
+		terminalFileUrl,
+		type TransferProgress,
 		archiveFromTerminal,
 		uploadToTerminal,
 		createDirectory,
@@ -528,6 +531,9 @@
 	let fileSqliteData: ArrayBuffer | null = null;
 	let fileDocxData: ArrayBuffer | null = null;
 	let fileLoading = false;
+	// fork: progress of a large audio/video load, shown under the spinner.
+	let fileLoadProgress: TransferProgress | null = null;
+	let mediaLoad: AbortController | null = null;
 	let filePreviewRef: FilePreview;
 	let commentGeneration = 0;
 	let fileSearchTarget: FileSearchTarget | null = null;
@@ -580,7 +586,8 @@
 	let shiftKey = false;
 
 	// ── Terminal resolution ──────────────────────────────────────────────
-	let selectedTerminal: { url: string; key: string } | null = null;
+	// fork: system = reached through Open WebUI's proxy (same origin, session cookie works).
+	let selectedTerminal: { url: string; key: string; system?: boolean } | null = null;
 	let terminalChatContextPending = false;
 	let terminalChatContextHidden = false;
 	let isPerChatTerminal = false;
@@ -591,7 +598,7 @@
 
 	const chatContext = (terminal: any) => terminal?.contexts?.chat ?? {};
 
-	const getTerminal = (): { url: string; key: string } | null => {
+	const getTerminal = (): { url: string; key: string; system: boolean } | null => {
 		const systemTerminal = $selectedTerminalId
 			? (($terminalServers ?? []).find((t) => t.id === $selectedTerminalId) ?? null)
 			: ($terminalServers?.[0] ?? null);
@@ -613,7 +620,7 @@
 		const url = systemTerminal?.url ?? userTerminal?.url ?? '';
 		const key = isSystem ? localStorage.token : (userTerminal?.key ?? '');
 
-		return url ? { url, key } : null;
+		return url ? { url, key, system: isSystem } : null;
 	};
 
 	// Detect terminal or chat changes — the explicit store references ensure
@@ -644,6 +651,8 @@
 			pinnedComparison = null;
 		}
 		if (chatChanged || terminalChanged || !terminal) previewPort = null;
+		// fork: a media load for the previous terminal or chat is no longer wanted.
+		if (terminalChanged || !terminal || (chatChanged && oldChatId)) mediaLoad?.abort();
 
 		if (mounted && terminal) {
 			if (chatChanged && chatId && !oldChatId) {
@@ -930,7 +939,52 @@
 	};
 
 	// ── File preview management ──────────────────────────────────────────
+	// fork: audio/video. Through the proxy the file is copied into Open WebUI's cache once and
+	// played from there with seeking; a direct terminal still downloads it, now with progress.
+	// Opening another file stops waiting for this one.
+	const loadMedia = async (
+		terminal: { url: string; key: string; system?: boolean },
+		filePath: string
+	): Promise<string | null> => {
+		mediaLoad?.abort();
+		const controller = new AbortController();
+		mediaLoad = controller;
+		const onProgress = (progress: TransferProgress) => {
+			if (mediaLoad === controller) fileLoadProgress = progress;
+		};
+		try {
+			if (terminal.system) {
+				const result = await prepareTerminalMedia(
+					terminal.url,
+					terminal.key,
+					filePath,
+					chatId ?? undefined,
+					controller.signal,
+					onProgress
+				);
+				if ('url' in result) return result.url;
+				if (!controller.signal.aborted) toast.error(result.error);
+				return null;
+			}
+			const result = await downloadFileBlob(
+				terminal.url,
+				terminal.key,
+				filePath,
+				chatId ?? undefined,
+				controller.signal,
+				onProgress
+			);
+			return result ? URL.createObjectURL(result.blob) : null;
+		} finally {
+			if (mediaLoad === controller) {
+				mediaLoad = null;
+				fileLoadProgress = null;
+			}
+		}
+	};
+
 	const clearFilePreview = () => {
+		mediaLoad?.abort();
 		commentGeneration++;
 		fileSearchTarget = null;
 		documentTargetPage = null;
@@ -1099,7 +1153,11 @@
 				? { showRaw, currentSlide, selectedExcelSheet, scroll: viewerRoot?.scrollTop ?? 0 }
 				: null;
 		const current = () =>
-			generation === loadGeneration && selector === $selectedTerminalId && session === chatId;
+			generation === loadGeneration &&
+			selector === $selectedTerminalId &&
+			// fork: the first message saves a new chat (no id -> id) without changing the panel;
+			// a file opened before that is still the one on screen.
+			(session === chatId || (!session && !!chatId));
 		openedFile = null;
 		if (terminalContext) terminalContext = { ...terminalContext, file: null };
 		dirty = false;
@@ -1149,21 +1207,9 @@
 			);
 			if (result) next.fileImageUrl = URL.createObjectURL(result.blob);
 		} else if (isVideo(filePath)) {
-			const result = await downloadFileBlob(
-				terminal.url,
-				terminal.key,
-				filePath,
-				chatId ?? undefined
-			);
-			if (result) next.fileVideoUrl = URL.createObjectURL(result.blob);
+			next.fileVideoUrl = await loadMedia(terminal, filePath);
 		} else if (isAudio(filePath)) {
-			const result = await downloadFileBlob(
-				terminal.url,
-				terminal.key,
-				filePath,
-				chatId ?? undefined
-			);
-			if (result) next.fileAudioUrl = URL.createObjectURL(result.blob);
+			next.fileAudioUrl = await loadMedia(terminal, filePath);
 		} else if (isPdf(filePath)) {
 			const result = await downloadFileBlob(
 				terminal.url,
@@ -1331,23 +1377,57 @@
 
 	let downloading = false;
 
+	// fork: the "Preparing download" toast counts what has arrived (at most a few updates a second).
+	const formatMB = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+	const downloadProgressToast = (toastId: string | number) => {
+		let last = 0;
+		return ({ received, total }: TransferProgress) => {
+			const now = Date.now();
+			if (now - last < 250 && received !== total) return;
+			last = now;
+			const text = total
+				? `${$i18n.t('Downloading')} ${Math.floor((received / total) * 100)} % (${formatMB(received)} / ${formatMB(total)})`
+				: `${$i18n.t('Downloading')} ${formatMB(received)}`;
+			toast.loading(text, { id: toastId });
+		};
+	};
+
 	const downloadFile = async (path: string) => {
 		const terminal = selectedTerminal;
 		if (!terminal || downloading) return;
 
+		// Directories end with '/', downloaded as a ZIP archive
+		const isDir = path.endsWith('/');
+		// fork: through the proxy a file goes straight to the browser's own download, which
+		// shows progress and writes to disk as it arrives (no copy in memory first).
+		if (!isDir && terminal.system) {
+			const a = document.createElement('a');
+			a.href = terminalFileUrl(terminal.url, path, chatId ?? undefined);
+			a.download = path.split('/').pop() ?? 'file';
+			a.click();
+			return;
+		}
+
 		downloading = true;
 		const toastId = toast.loading($i18n.t('Preparing download...'));
+		const onProgress = downloadProgressToast(toastId);
 		try {
-			// Directories end with '/', downloaded as a ZIP archive
-			const isDir = path.endsWith('/');
 			const result = isDir
 				? await archiveFromTerminal(
 						terminal.url,
 						terminal.key,
 						[path.replace(/\/$/, '')],
-						chatId ?? undefined
+						chatId ?? undefined,
+						onProgress
 					)
-				: await downloadFileBlob(terminal.url, terminal.key, path, chatId ?? undefined);
+				: await downloadFileBlob(
+						terminal.url,
+						terminal.key,
+						path,
+						chatId ?? undefined,
+						undefined,
+						onProgress
+					);
 			if (!result) {
 				toast.error($i18n.t('Download failed'));
 				return;
@@ -1750,7 +1830,8 @@
 				terminal.url,
 				terminal.key,
 				paths,
-				chatId ?? undefined
+				chatId ?? undefined,
+				downloadProgressToast(toastId)
 			);
 			if (!result) {
 				toast.error($i18n.t('Download failed'));
@@ -1921,6 +2002,7 @@
 
 	onDestroy(() => {
 		++loadGeneration;
+		mediaLoad?.abort(); // fork: stop polling or downloading a media file nobody will see
 		dirtyChoice?.resolve('cancel');
 		clearMatchRequest();
 		if (fileImageUrl) URL.revokeObjectURL(fileImageUrl);
@@ -2334,6 +2416,7 @@
 						{selectedFile}
 						readOnly={!selectedFileWritable}
 						{fileLoading}
+						loadProgress={fileLoadProgress}
 						{fileImageUrl}
 						{fileVideoUrl}
 						{fileAudioUrl}

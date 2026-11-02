@@ -8,11 +8,12 @@ Routes:
 import asyncio
 import logging
 import posixpath
-from urllib.parse import unquote
+import re
+from urllib.parse import quote, unquote, urljoin, urlsplit
 
 import aiohttp
 from fastapi import APIRouter, Depends, Request, Response, WebSocket
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from open_webui.config import TERMINAL_PROXY_HEADERS
 from open_webui.env import AIOHTTP_CLIENT_SESSION_SSL, ENABLE_TOOL_SERVERS
 from open_webui.events import EVENTS, publish_event
@@ -21,6 +22,7 @@ from open_webui.models.groups import Groups
 from open_webui.utils.access_control import has_connection_access
 from open_webui.utils.auth import get_verified_user, get_verified_user_by_token
 from open_webui.utils.headers import bearer_auth_header, normalize_bearer_token
+from open_webui.utils import terminal_media_cache  # fork
 from open_webui.utils.json_codec import JSONCodec
 from open_webui.utils.terminals import (
     TERMINAL_CONTEXT_HEADER,
@@ -32,7 +34,6 @@ from open_webui.utils.terminals import (
     terminal_context_id,
     terminal_contexts,
 )
-from starlette.background import BackgroundTask
 from starlette.requests import ClientDisconnect
 from yarl import URL
 
@@ -40,12 +41,85 @@ log = logging.getLogger(__name__)
 
 router = APIRouter()
 
-STREAMING_CONTENT_TYPES = ('application/octet-stream', 'image/', 'application/pdf')
-ADMIN_API_PATHS = ('api/v1/policies', 'api/v1/status', 'api/v1/terminals')
-# Drop the upstream's server and date: uvicorn adds its own and forwarding both duplicates them.
-STRIPPED_RESPONSE_HEADERS = frozenset(
-    ('transfer-encoding', 'connection', 'content-encoding', 'content-length', 'server', 'date')
+# fork: what a sandbox may send to the browser through the proxy. Everything else (Set-Cookie,
+# CORS, CSP, HSTS, Clear-Site-Data, Refresh, ...) is dropped: the terminal is untrusted.
+FORWARDED_RESPONSE_HEADERS = frozenset(
+    (
+        'content-type',
+        'content-disposition',
+        'content-language',
+        'etag',
+        'last-modified',
+        'vary',
+        'accept-ranges',
+        'content-range',
+        'location',  # rewritten by _proxy_location, dropped when it would leave the terminal
+    )
 )
+# fork: whatever the sandbox sends runs as an opaque origin, even when opened directly in a tab
+# (the preview iframes already use the same sandbox by default), so it can never read Open
+# WebUI's storage or call its API as the user.
+SANDBOX_RESPONSE_HEADERS = {
+    'Content-Security-Policy': 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads',
+    'X-Content-Type-Options': 'nosniff',
+    # Responses are per user; the sandbox cannot make them cacheable for anyone else.
+    'Cache-Control': 'private, no-store',
+}
+
+
+def _proxy_location(
+    value: str, request: Request, server_id: str, upstream_path: str, session_id: str | None
+) -> str | None:
+    """fork: a terminal's redirect, kept inside this terminal's proxy path and chat context.
+
+    The browser follows same-origin redirects with the user's Authorization header and the
+    original method, so a sandbox answering ``307 Location: /api/v1/chats/`` to a DELETE would
+    otherwise delete the user's chats. The target is resolved as a URL on the terminal and
+    mapped under /api/v1/terminals/{id}/chats/{session} (the request's own chat, whether it
+    came in the path or in X-Session-Id) or /api/v1/terminals/{id}; it can never pick another
+    chat. Other hosts and schemes are dropped.
+    """
+    if not value or any(c in value for c in '\\\r\n\t\x00'):
+        return None
+    parts = urlsplit(value)
+    if parts.scheme or parts.netloc or value.startswith('//'):
+        return None
+    # The URL parser treats %2e%2e as '..': refuse dot segments in any spelling.
+    if any(segment in ('.', '..') for segment in unquote(parts.path).split('/')):
+        return None
+    marker = f'/terminals/{server_id}/'
+    index = request.url.path.find(marker)
+    if index < 0:
+        return None
+    prefix = request.url.path[: index + len(marker) - 1]
+    if session_id:
+        prefix += f"/chats/{quote(session_id, safe='')}"
+    current = '/' + upstream_path.lstrip('/')
+    if parts.path.startswith('/'):
+        # An app behind the port proxy thinks it runs at '/': its '/login' is its own.
+        port = re.match(r'/proxy/(\d+)(?:/|$)', current)
+        target, query, fragment = (f'/proxy/{port.group(1)}' if port else '') + parts.path, parts.query, parts.fragment
+    else:
+        # Relative, query-only and fragment-only references resolve against the current URL.
+        base = 'http://terminal' + current + (f'?{request.url.query}' if request.url.query else '')
+        joined = urlsplit(urljoin(base, value))
+        target, query, fragment = joined.path or '/', joined.query, joined.fragment
+    normalized = posixpath.normpath(target)
+    if target.endswith('/') and not normalized.endswith('/'):
+        normalized += '/'
+    # The router decodes the path: judge it as decoded, and refuse encoded separators.
+    if re.search(r'%(2f|5c|00)', normalized, re.IGNORECASE):
+        return None
+    decoded = posixpath.normpath(unquote(normalized))
+    # Without a chat in the request, a redirect must not name one (in any spelling).
+    if not session_id and (decoded == '/chats' or decoded.startswith('/chats/')):
+        return None
+    location = prefix + normalized
+    if query:
+        location += '?' + query
+    if fragment:
+        location += '#' + fragment
+    return location
 
 
 def _sanitize_proxy_path(path: str) -> str | None:
@@ -107,18 +181,15 @@ async def list_terminal_servers(request: Request, user=Depends(get_verified_user
 
 
 PROXY_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
+ADMIN_API_PATHS = ('api/v1/policies', 'api/v1/status', 'api/v1/terminals')
 
 
-@router.api_route('/{server_id}/{path:path}', methods=PROXY_METHODS)
-# Register the chat route before the catch-all.
-@router.api_route('/{server_id}/chats/{chat_id}/{path:path}', methods=PROXY_METHODS)
-async def proxy_terminal(
-    server_id: str,
-    path: str,
-    request: Request,
-    user=Depends(get_verified_user),
-):
-    """Proxy a request to the admin terminal server identified by *server_id*."""
+async def _resolve_proxy_target(server_id: str, path: str, request: Request, user):
+    """Access checks and upstream request parts shared by the proxy and the media cache.
+
+    Returns (connection, base_url, target_url, headers, cookies, session_id, context_id),
+    or a JSONResponse refusing the request.
+    """
     if not ENABLE_TOOL_SERVERS:
         return JSONResponse({'error': 'Tool servers are disabled'}, status_code=403)
 
@@ -154,10 +225,8 @@ async def proxy_terminal(
     ):
         return JSONResponse({'error': 'Path not allowed'}, status_code=403)
 
-    if request.query_params:
-        target_url += f'?{request.query_params}'
-
     headers = {'X-User-Id': user.id}
+    context_id = None
     # Forward per-session cwd tracking header
     session_id = request.path_params.get('chat_id') or request.headers.get('x-session-id')
     if session_id:
@@ -175,7 +244,9 @@ async def proxy_terminal(
     if auth_type == 'bearer':
         headers.update(bearer_auth_header(connection.get('key', '')))
     elif auth_type == 'session':
-        headers.update(bearer_auth_header(request.state.token.credentials))
+        token = getattr(getattr(request.state, 'token', None), 'credentials', None) or request.cookies.get('token')
+        if token:
+            headers.update(bearer_auth_header(token))
     elif auth_type == 'system_oauth':
         # Resolve the token server-side from the caller's OAuth session; never trust a client header.
         oauth_token = None
@@ -191,58 +262,190 @@ async def proxy_terminal(
             headers.update(bearer_auth_header(oauth_token.get('access_token', '')))
     # auth_type == "none": no Authorization header
 
+    return connection, base_url, target_url, headers, cookies, session_id, context_id
+
+
+# fork: registered before the catch-all proxy so these paths never reach the terminal.
+@router.get('/{server_id}/cached-media')
+@router.get('/{server_id}/chats/{chat_id}/cached-media')
+async def cached_terminal_media(
+    server_id: str,
+    request: Request,
+    path: str,
+    prepare: bool = False,
+    user=Depends(get_verified_user),
+):
+    """Play a terminal's audio/video with seeking: a local copy, served with byte ranges.
+
+    ``prepare=true`` starts the copy and returns its progress as JSON; without it the
+    response is the file (waiting for the copy if needed).
+    """
+    # Cookie-authenticated: only Open WebUI's own pages may start copies or read them.
+    if request.headers.get('sec-fetch-site', 'same-origin') not in ('same-origin', 'none'):
+        return JSONResponse({'error': 'Not allowed from another site'}, status_code=403)
+    resolved = await _resolve_proxy_target(server_id, 'files/view', request, user)
+    if isinstance(resolved, Response):
+        return resolved
+    _connection, base_url, _target, headers, cookies, session_id, context_id = resolved
+    if not path.startswith('/') or '\x00' in path or len(path) > 4096:
+        return JSONResponse({'error': 'Invalid path'}, status_code=400)
+    key = terminal_media_cache.cache_key(
+        user_id=user.id,
+        server_id=server_id,
+        base_url=base_url,
+        context=context_id or '',
+        session=session_id or '',
+        path=path,
+    )
+    try:
+        # A player that gives up stops waiting (and holding the entry) at once.
+        entry = await _until_disconnect(
+            request,
+            terminal_media_cache.prepare(
+                key=key,
+                base_url=base_url,
+                headers=headers,
+                cookies=cookies,
+                path=path,
+                wait=not prepare,
+                owner=user.id,
+                lease=not prepare,
+            ),
+            None,
+        )
+    except terminal_media_cache.MediaCacheError as error:
+        return JSONResponse({'error': str(error)}, status_code=error.status)
+    except ClientDisconnect:
+        return Response(status_code=499)
+    except (aiohttp.ClientError, TimeoutError) as error:
+        log.error('Terminal media cache error: %s', str(error) or type(error).__name__)
+        return JSONResponse({'error': 'The terminal could not be reached'}, status_code=502)
+    if prepare:
+        return JSONResponse(terminal_media_cache.progress(entry), headers={'Cache-Control': 'no-store'})
+    # prepare(lease=True) counted this reader; the response releases it however it ends
+    # (seeking aborts requests all the time).
+    try:
+        return _LeasedFileResponse(
+            entry.file,
+            on_close=lambda: terminal_media_cache.release(entry),
+            media_type=entry.media_type,
+            headers=dict(terminal_media_cache.SECURITY_HEADERS),
+            content_disposition_type='inline',
+            filename=posixpath.basename(path),
+        )
+    except Exception:
+        terminal_media_cache.release(entry)
+        raise
+
+
+class _LeasedFileResponse(FileResponse):
+    def __init__(self, *args, on_close, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._on_close = on_close
+
+    async def __call__(self, scope, receive, send):
+        # FileResponse keeps reading the file after the browser leaves (the server drops the
+        # sends), which a seek does all the time: stop serving on the disconnect.
+        async def disconnected():
+            while (await receive())['type'] != 'http.disconnect':
+                pass
+
+        serve = asyncio.ensure_future(super().__call__(scope, receive, send))
+        watch = asyncio.ensure_future(disconnected())
+        try:
+            done, _ = await asyncio.wait({serve, watch}, return_when=asyncio.FIRST_COMPLETED)
+            if serve in done:
+                serve.result()
+        finally:
+            for task in (serve, watch):
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except BaseException:
+                        pass
+            self._on_close()
+
+
+@router.api_route('/{server_id}/{path:path}', methods=PROXY_METHODS)
+# Register the chat route before the catch-all.
+@router.api_route('/{server_id}/chats/{chat_id}/{path:path}', methods=PROXY_METHODS)
+async def proxy_terminal(
+    server_id: str,
+    path: str,
+    request: Request,
+    user=Depends(get_verified_user),
+):
+    """Proxy a request to the admin terminal server identified by *server_id*."""
+    resolved = await _resolve_proxy_target(server_id, path, request, user)
+    if isinstance(resolved, Response):
+        return resolved
+    _connection, _base_url, target_url, headers, cookies, session_id, _context_id = resolved
+
+    if request.query_params:
+        target_url += f'?{request.query_params}'
+
     content_type = request.headers.get('content-type')
     if content_type:
         headers['Content-Type'] = content_type
 
+    # fork: no total limit; a large download only fails when the terminal stops sending.
     session = aiohttp.ClientSession(
-        timeout=aiohttp.ClientTimeout(total=300, connect=10),
+        timeout=aiohttp.ClientTimeout(total=None, connect=10, sock_read=300),
         trust_env=True,
     )
 
+    upstream_response = None
     try:
         body = await request.body()
 
-        upstream_response = await session.request(
-            method=request.method,
-            url=target_url,
-            headers=headers,
-            cookies=cookies,
-            data=body or None,
-            ssl=AIOHTTP_CLIENT_SESSION_SSL,
-            allow_redirects=False,
+        # fork: the wait for the terminal's headers has its own deadline and ends when the
+        # browser leaves (the server does not cancel this handler on a disconnect).
+        upstream_response = await _until_disconnect(
+            request,
+            session.request(
+                method=request.method,
+                url=target_url,
+                headers=headers,
+                cookies=cookies,
+                data=body or None,
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+                allow_redirects=False,
+            ),
+            HEADER_SECONDS,
         )
 
-        upstream_content_type = upstream_response.headers.get('content-type', '')
-        filtered_headers = {
-            key: value
-            for key, value in upstream_response.headers.items()
-            if key.lower() not in STRIPPED_RESPONSE_HEADERS
-        }
+        # fork: only known-safe headers pass; a redirect stays inside this terminal's proxy path.
+        filtered_headers = {}
+        for key, value in upstream_response.headers.items():
+            name = key.lower()
+            if name not in FORWARDED_RESPONSE_HEADERS:
+                continue
+            if name == 'location':
+                value = _proxy_location(value, request, server_id, path, session_id)
+                if value is None:
+                    continue
+            filtered_headers[key] = value
         if TERMINAL_PROXY_HEADERS:
             filtered_headers.update(TERMINAL_PROXY_HEADERS)
+        filtered_headers.update(SANDBOX_RESPONSE_HEADERS)
 
-        # Stream binary responses directly
-        if any(t in upstream_content_type for t in STREAMING_CONTENT_TYPES):
+        # fork: stream every response (video, audio, archives, JSON too): nothing the sandbox
+        # sends is held in memory here, and the length passes through so the browser can show
+        # download progress. aiohttp decodes a compressed body, so the length is only kept
+        # when the upstream sent it uncompressed.
+        length = upstream_response.headers.get('content-length')
+        if length and length.isdigit() and not upstream_response.headers.get('content-encoding'):
+            filtered_headers['Content-Length'] = length
 
-            async def cleanup():
-                await upstream_response.release()
-                await session.close()
-
-            return StreamingResponse(
-                content=upstream_response.content.iter_any(),
-                status_code=upstream_response.status,
-                headers=filtered_headers,
-                background=BackgroundTask(cleanup),
-            )
-
-        # Buffer text/JSON responses
-        response_body = await upstream_response.read()
-        status_code = upstream_response.status
-        await upstream_response.release()
-        await session.close()
-
-        return Response(content=response_body, status_code=status_code, headers=filtered_headers)
+        response = _ClosingStreamingResponse(
+            upstream_response,
+            session,
+            status_code=upstream_response.status,
+            headers=filtered_headers,
+        )
+        upstream_response = None  # the response owns closing from here on
+        return response
 
     except ClientDisconnect:
         await session.close()
@@ -255,6 +458,57 @@ async def proxy_terminal(
         await session.close()
         log.exception('Terminal proxy error: %s', error)
         return JSONResponse({'error': f'Terminal proxy error: {error}'}, status_code=502)
+    except BaseException:
+        # Cancelled (the browser left) before a response existed: close here.
+        if upstream_response is not None:
+            upstream_response.release()
+        await session.close()
+        raise
+
+
+HEADER_SECONDS = 300
+
+
+async def _until_disconnect(request: Request, awaitable, deadline: float | None):
+    """fork: await while the browser is still connected (checked every second) and, with a
+    deadline, at most that long. A disconnect raises ClientDisconnect, a deadline TimeoutError;
+    the work is cancelled either way."""
+    task = asyncio.ensure_future(awaitable)
+    loop = asyncio.get_running_loop()
+    end = None if deadline is None else loop.time() + deadline
+    try:
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=1)
+            if done:
+                return task.result()
+            if await request.is_disconnected():
+                raise ClientDisconnect()
+            if end is not None and loop.time() > end:
+                raise TimeoutError('The terminal did not answer in time')
+    finally:
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except BaseException:
+                pass
+
+
+class _ClosingStreamingResponse(StreamingResponse):
+    """fork: streams an upstream response and always closes it and its session when the ASGI
+    response ends: finished, failed while sending headers, or abandoned mid-body."""
+
+    def __init__(self, upstream, session, **kwargs):
+        super().__init__(content=upstream.content.iter_any(), **kwargs)
+        self._upstream = upstream
+        self._session = session
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._upstream.release()
+            await asyncio.shield(self._session.close())
 
 
 # ---------------------------------------------------------------------------

@@ -22,6 +22,8 @@
 
 	export let selectedFile: string | null = null;
 	export let fileLoading = false;
+	// fork: how much of a large audio/video file has arrived while it loads.
+	export let loadProgress: { received: number; total: number | null } | null = null;
 	export let fileImageUrl: string | null = null;
 	export let fileVideoUrl: string | null = null;
 	export let fileAudioUrl: string | null = null;
@@ -291,7 +293,27 @@
 >
 	<!-- File preview -->
 	{#if fileLoading}
-		<div class="flex items-center justify-center h-full"><Spinner className="size-4" /></div>
+		<div class="flex flex-col items-center justify-center gap-2 h-full">
+			<Spinner className="size-4" />
+			{#if loadProgress && loadProgress.received > 0}
+				<!-- fork: large media loads take a while; say how far along it is -->
+				<div class="w-48 max-w-[80%] text-center text-xs tabular-nums text-gray-500 dark:text-gray-400" role="status">
+					{#if loadProgress.total}
+						<div class="h-1 w-full overflow-hidden rounded bg-gray-200 dark:bg-gray-700">
+							<div
+								class="h-full bg-gray-500 dark:bg-gray-300"
+								style="width: {Math.min(100, (loadProgress.received / loadProgress.total) * 100)}%"
+							></div>
+						</div>
+						<p class="mt-1">
+							{Math.floor((loadProgress.received / loadProgress.total) * 100)} % · {(loadProgress.received / 1048576).toFixed(0)} / {(loadProgress.total / 1048576).toFixed(0)} MB
+						</p>
+					{:else}
+						<p>{(loadProgress.received / 1048576).toFixed(0)} MB</p>
+					{/if}
+				</div>
+			{/if}
+		</div>
 	{:else if fileImageUrl !== null}
 		<PanzoomContainer
 			bind:this={panzoomRef}

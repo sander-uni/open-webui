@@ -137,7 +137,15 @@ class AppHTTPMiddleware:
                 headers = MutableHeaders(scope=message)
                 headers['X-Process-Time'] = f'{time.monotonic() - start_time:.6f}'
                 for key, value in self._security_headers:
-                    headers[key] = value
+                    lower = key.lower()
+                    # fork: a route's own policy (the terminal proxy's sandbox) must survive the
+                    # global one: two CSP headers are both enforced, and no-store is never weakened.
+                    if lower == 'content-security-policy' and 'content-security-policy' in headers:
+                        headers.append(key, value)
+                    elif lower == 'cache-control' and 'no-store' in headers.get('cache-control', ''):
+                        continue
+                    else:
+                        headers[key] = value
             await send(message)
 
         return send_with_headers
