@@ -1482,6 +1482,9 @@ class ChatTable:
 
                 if message_id in history.get('messages', {}):
                     status_history = history['messages'][message_id].get('statusHistory', [])
+                    call_id = status.get('call_id')  # fork: a tool's latest line is the only one ever shown
+                    if call_id:
+                        status_history = [s for s in status_history if not (isinstance(s, dict) and s.get('call_id') == call_id)]
                     status_history.append(status)
                     history['messages'][message_id]['statusHistory'] = status_history
                     message = history['messages'][message_id]

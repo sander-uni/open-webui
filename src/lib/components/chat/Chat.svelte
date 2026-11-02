@@ -1588,6 +1588,12 @@
 				queueMicrotask(() => bridge?.update());
 				if (type === 'status') {
 					if (message?.statusHistory) {
+						// fork: a tool's latest line is the only one ever shown, as the server stores it
+						if (data?.call_id) {
+							message.statusHistory = message.statusHistory.filter(
+								(status) => status?.call_id !== data.call_id
+							);
+						}
 						message.statusHistory.push(data);
 					} else {
 						message.statusHistory = [data];
