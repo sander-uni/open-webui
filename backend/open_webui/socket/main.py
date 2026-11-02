@@ -911,7 +911,10 @@ async def chat_events(sid, data):
                 reader = await Users.get_user_by_id(user['id'])
                 if not reader or not await Chats.get_accessible_chat_by_id(chat_id, reader):
                     return False
-                await sio.enter_room(sid, f'chat:{chat_id}')
+                try:
+                    await sio.enter_room(sid, f'chat:{chat_id}')
+                except ValueError:  # fork: the tab closed meanwhile; nothing to join
+                    return False
             session = SESSION_POOL.get(sid)
             if not session:
                 await sio.leave_room(sid, f'chat:{chat_id}')
