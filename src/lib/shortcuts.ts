@@ -99,7 +99,7 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
 	[Shortcut.TOGGLE_CONTROLS]: '',
 	[Shortcut.CLOSE_MODAL]: 'Escape',
 	[Shortcut.FOCUS_INPUT]: 'Shift+Escape',
-	[Shortcut.CLEAR_INPUT_SELECTIONS]: 'Escape',
+	[Shortcut.CLEAR_INPUT_SELECTIONS]: '', // fork: was Escape; see the keys below
 	[Shortcut.GENERATE_MESSAGE_PAIR]: 'Cmd+Shift+Enter',
 	[Shortcut.REGENERATE_RESPONSE]: 'Cmd+R',
 	[Shortcut.ALLOW_TOOL_CALL]: 'Cmd+Alt+Enter',
@@ -305,7 +305,9 @@ export const shortcuts: ShortcutRegistry = {
 	},
 	[Shortcut.CLEAR_INPUT_SELECTIONS]: {
 		name: (t) => t('settings.personal.shortcuts.clearInputSelections.label'),
-		keys: ['Escape'],
+		// fork: Escape silently dropped the selected tools, and the next reply had no tools at all.
+		// Still there to bind in Settings.
+		keys: [],
 		category: 'Input',
 		configurable: true,
 		// Tooltips are translated dynamically; keep this key visible to the extractor.
