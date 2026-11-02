@@ -11,7 +11,7 @@
 	export let files: ToolFile[] = [];
 
 	const isKind = (file: ToolFile, kind: string) => (file.content_type ?? '').startsWith(`${kind}/`);
-	// A player that cannot load its file (deleted, no access, connection lost) says so and can try again.
+	// Media that cannot load (deleted, no access, connection lost) says so and can try again.
 	let failed = new Set<string>();
 	const failureKey = (file: ToolFile) => JSON.stringify([file.id ?? '', file.url ?? '']);
 	const markFailed = (file: ToolFile) => {
@@ -32,9 +32,7 @@
 
 <div class="tool-media my-2 flex flex-wrap gap-2 w-full" dir="auto">
 	{#each files as file (file.id ?? file.url)}
-		{#if file.url && (file.type === 'image' || isKind(file, 'image'))}
-			<Image src={file.url} alt={file.name || $i18n.t('Generated Image')} imageClassName="rounded-lg max-h-[75vh] max-w-full" />
-		{:else if failed.has(failureKey(file))}
+		{#if failed.has(failureKey(file))}
 			<button
 				type="button"
 				class="inline-flex h-[1.6875rem] items-center gap-1.5 rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 text-xs text-gray-500 hover:text-gray-700 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-400 dark:hover:text-gray-300"
@@ -43,6 +41,13 @@
 			>
 				{file.name || $i18n.t('File')}: {$i18n.t('Unavailable')} · {$i18n.t('Try Again')}
 			</button>
+		{:else if file.url && (file.type === 'image' || isKind(file, 'image'))}
+			<Image
+				src={file.url}
+				alt={file.name || $i18n.t('Generated Image')}
+				imageClassName="rounded-lg max-h-[75vh] max-w-full"
+				onError={() => markFailed(file)}
+			/>
 		{:else if isKind(file, 'video') && localUrl(file)}
 			<!-- svelte-ignore a11y-media-has-caption -->
 			<video
