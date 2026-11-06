@@ -96,7 +96,7 @@ async def get_state(user=Depends(get_verified_user)):
 # characters like the manager's, and a request can't grow the file without limit.
 _PICK_ID = 300
 _FAVORITES_KEPT = 500
-_RECENTS_KEPT = 40
+_RECENTS_KEPT = 200  # also orders the favourites
 _picks_lock = threading.Lock()
 
 
@@ -153,7 +153,16 @@ def _apply_picks(ui: dict, favorite: Any, used: Any) -> dict:
         ):
             raise HTTPException(status_code=400, detail='not a list of model ids')
         fresh = list(dict.fromkeys(used))
-        recents = (fresh + [x for x in recents if x not in fresh])[:_RECENTS_KEPT]
+        recents = fresh + [x for x in recents if x not in fresh]
+        # Over the cap the oldest go first, but never a favourite: this list orders them.
+        excess = len(recents) - _RECENTS_KEPT
+        kept = []
+        for model in reversed(recents):
+            if excess > 0 and model not in favorites:
+                excess -= 1
+            else:
+                kept.append(model)
+        recents = kept[::-1]
     return {'favoriteModels': favorites, 'recentModels': recents}
 
 

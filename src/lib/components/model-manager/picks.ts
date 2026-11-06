@@ -8,7 +8,7 @@ import { updateModelPicks, type ModelPicks } from '$lib/apis/model-manager';
 import { managedId, type ManagerState } from './state';
 
 export const RECENT_SHOWN = 5;
-const RECENT_KEPT = 40; // enough for 5 non-favourites after stars and removed models
+const RECENT_KEPT = 200; // also orders the favourites, so it outlasts every model in use
 
 export const nextRecents = (recents: string[], used: string[]) =>
 	[...used.filter(Boolean), ...recents.filter((id) => !used.includes(id))].slice(0, RECENT_KEPT);
@@ -16,8 +16,8 @@ export const nextRecents = (recents: string[], used: string[]) =>
 export const nextFavorites = (favorites: string[], id: string) =>
 	favorites.includes(id) ? favorites.filter((x) => x !== id) : [...favorites, id];
 
-/** Favourites in the order they were starred, then 5 recents that aren't favourites. Models that
- * no longer exist drop out quietly. */
+/** Favourites, last used first (never used ones after those, in the order they were starred), then
+ * 5 recents that aren't favourites. Models that no longer exist drop out quietly. */
 export const quickPicks = <T extends { value: string }>(
 	items: T[],
 	favorites: string[],
@@ -29,7 +29,14 @@ export const quickPicks = <T extends { value: string }>(
 			const item = byId.get(id);
 			return item ? [{ ...item, section }] : [];
 		});
-	const stars = take(favorites, 'favorites');
+	const rank = (id: string) => {
+		const i = recents.indexOf(id);
+		return i < 0 ? recents.length : i;
+	};
+	const stars = take(
+		[...favorites].sort((a, b) => rank(a) - rank(b)),
+		'favorites'
+	);
 	const starred = new Set(favorites);
 	const recent = take(
 		recents.filter((id) => !starred.has(id)),

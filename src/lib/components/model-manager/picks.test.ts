@@ -5,9 +5,17 @@ const items = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((value) => ({ value }
 const ids = (list: { value: string }[]) => list.map((i) => i.value);
 
 describe('quick picks', () => {
-	it('favourites in starred order, then 5 recents that are not favourites', () => {
+	it('favourites last used first, never used ones after them as starred, then 5 other recents', () => {
+		const out = quickPicks(items, ['h', 'c', 'g', 'a'], ['a', 'b', 'c', 'd', 'e', 'f']);
+		expect(ids(out)).toEqual(['a', 'c', 'h', 'g', 'b', 'd', 'e', 'f']);
+		expect(ids(quickPicks(items, ['c', 'a'], ['c', 'x', 'a']))).toEqual(['c', 'a']);
+	});
+	it('a model saved twice ranks by its newest use', () => {
+		expect(ids(quickPicks(items, ['a', 'b'], ['a', 'b', 'a']))).toEqual(['a', 'b']);
+	});
+	it('marks the sections', () => {
 		const out = quickPicks(items, ['c', 'a'], ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']);
-		expect(ids(out)).toEqual(['c', 'a', 'b', 'd', 'e', 'f', 'g']);
+		expect(ids(out)).toEqual(['a', 'c', 'b', 'd', 'e', 'f', 'g']);
 		expect(out.map((i) => i.section)).toEqual(['favorites', 'favorites', 'recent', 'recent', 'recent', 'recent', 'recent']);
 	});
 	it('a model that is gone drops out quietly and does not use up a recent place', () => {
@@ -19,7 +27,7 @@ describe('lists', () => {
 	it('recents: newest first, no doubles, bounded', () => {
 		expect(nextRecents(['a', 'b'], ['b'])).toEqual(['b', 'a']);
 		expect(nextRecents(['a'], ['b', 'c'])).toEqual(['b', 'c', 'a']);
-		expect(nextRecents(Array.from({ length: 60 }, (_, i) => `m${i}`), ['x'])).toHaveLength(40);
+		expect(nextRecents(Array.from({ length: 260 }, (_, i) => `m${i}`), ['x'])).toHaveLength(200);
 	});
 	it('favourites toggle, new ones last', () => {
 		expect(nextFavorites(['a'], 'b')).toEqual(['a', 'b']);

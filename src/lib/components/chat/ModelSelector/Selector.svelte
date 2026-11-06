@@ -373,6 +373,17 @@
 
 	$: filteredItems = pickerList ?? upstreamItems;
 
+	// fork: the favourites can reorder while the picker is open (a use on another device): the
+	// keyboard highlight stays on its model, so Enter doesn't pick a different one
+	let shownQuickList: any[] = [];
+	const keepHighlight = (list: any[]) => {
+		const highlighted = shownQuickList[selectedModelIdx]?.value;
+		shownQuickList = list;
+		const index = list.findIndex((item) => item.value === highlighted);
+		if (index >= 0) selectedModelIdx = index;
+	};
+	$: if (pickerQuick) keepHighlight(filteredItems);
+
 	$: sanitizedSearchValue = searchValue.trim();
 	$: downloadTargets =
 		!selectionOnly && sanitizedSearchValue && $user?.role === 'admin'
@@ -1302,7 +1313,19 @@
 											role="presentation"
 											class="px-2 pb-0.5 pt-1.5 text-[0.6875rem] text-gray-500 dark:text-gray-400"
 										>
-											{item.section === 'favorites' ? $i18n.t('Favourites') : $i18n.t('Recent')}
+											{#if item.section === 'favorites'}
+												<Tooltip
+													content={$i18n.t(
+														"Last used first. Favourites you haven't used yet come after those, in the order you starred them."
+													)}
+													placement="top-start"
+													className="w-fit"
+												>
+													<span data-favourites-label>{$i18n.t('Favourites')}</span>
+												</Tooltip>
+											{:else}
+												{$i18n.t('Recent')}
+											{/if}
 										</div>
 									{/if}
 									<ModelItem
