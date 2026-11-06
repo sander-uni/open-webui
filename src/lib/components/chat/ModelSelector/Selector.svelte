@@ -1321,7 +1321,10 @@
 													placement="top-start"
 													className="w-fit"
 												>
-													<span data-favourites-label>{$i18n.t('Favourites')}</span>
+													<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
+													<span data-favourites-label tabindex="0" class="focus-ring rounded-sm"
+														>{$i18n.t('Favourites')}</span
+													>
 												</Tooltip>
 											{:else}
 												{$i18n.t('Recent')}

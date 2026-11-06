@@ -154,11 +154,12 @@ def _apply_picks(ui: dict, favorite: Any, used: Any) -> dict:
             raise HTTPException(status_code=400, detail='not a list of model ids')
         fresh = list(dict.fromkeys(used))
         recents = fresh + [x for x in recents if x not in fresh]
-        # Over the cap the oldest go first, but never a favourite: this list orders them.
+        # Over the cap the oldest go first, but never a favourite (this list orders them) and never
+        # the model just used.
         excess = len(recents) - _RECENTS_KEPT
         kept = []
         for model in reversed(recents):
-            if excess > 0 and model not in favorites:
+            if excess > 0 and model not in favorites and model not in fresh:
                 excess -= 1
             else:
                 kept.append(model)
