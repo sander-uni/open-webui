@@ -18,6 +18,15 @@ const call = async (token: string, method: string, path: string, body?: object) 
 	return data;
 };
 
+// fork: the chat picker's account lists; the server makes the change, so two devices can't overwrite
+// each other. An empty change just reads them.
+export type ModelPicks = { favoriteModels: string[]; recentModels: string[] };
+
+export const updateModelPicks = (
+	token: string,
+	change: { favorite?: { id: string; on: boolean }; used?: string[] } = {}
+) => call(token, 'POST', '/picks', change) as Promise<ModelPicks>;
+
 export const getModelManagerStatus = (token: string) => call(token, 'GET', '/status');
 
 export const loadManagedModel = (token: string, model: string, pin = false, force = false) =>

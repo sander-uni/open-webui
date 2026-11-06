@@ -13,7 +13,10 @@ export type ManagerState = {
 	elapsed_s: number | null;
 	pinned: boolean;
 	switch_to: string | null;
+	pin_away?: string | null; // a pinned local model away for ComfyUI
 	inflight: number;
+	jobs_waiting?: number; // ComfyUI jobs accepted, not running yet
+	unload_in_s?: number | null; // the idle timer; null = stays loaded
 	error: { model: string | null; message: string } | null;
 	managed: string[];
 	ux?: any; // Round 4: manager-owned copy, permissions and ordered plan.

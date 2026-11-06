@@ -19,6 +19,7 @@
 	export let className = undefined;
 	export let placement: 'top' | 'bottom' | 'auto' = 'bottom';
 	export let align: 'start' | 'end' = 'start';
+	export let pickerMode = false; // fork: favourites + recents + More models
 
 	let compareModels = selectedModels.length > 1;
 	let selector;
@@ -96,6 +97,7 @@
 					{placement}
 					{align}
 					{showSetDefault}
+					{pickerMode}
 					onSetDefault={saveDefaultModel}
 					multipleEnabled={$user?.role === 'admin' ||
 						($user?.permissions?.chat?.multiple_models ?? true)}

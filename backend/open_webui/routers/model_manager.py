@@ -7,8 +7,11 @@ Kept in its own file so upstream merges only touch two lines in main.py.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
+import threading
 import re
 from typing import Any
 
@@ -82,6 +85,100 @@ async def get_state(user=Depends(get_verified_user)):
     """Small state for the chat model picker (any signed-in user): which local model is loaded or
     loading, and which model ids the manager handles."""
     return await _call('GET', '/mm/state')
+
+
+# The chat picker's favourites and recents per account, so every device sees them. In their own
+# file beside the database, not in the user's settings: any settings save rewrites those whole, so
+# a tab left open would bring back old lists. The server makes each change under this lock, in a
+# thread so a slow disk can't stop chats on the one worker, and the thread holds the lock so a
+# cancelled request can't let a second writer in. So a star on the iPad survives one on the PC at
+# the same moment. An id is at most 300
+# characters like the manager's, and a request can't grow the file without limit.
+_PICK_ID = 300
+_FAVORITES_KEPT = 500
+_RECENTS_KEPT = 40
+_picks_lock = threading.Lock()
+
+
+def _picks_path() -> str:
+    from open_webui.env import DATA_DIR
+
+    return os.path.join(str(DATA_DIR), 'fork-model-picks.json')
+
+
+def _read_picks() -> dict:
+    try:
+        with open(_picks_path(), encoding='utf-8') as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except ValueError as e:  # damaged: kept aside, never overwritten
+        log.warning('model picks file is damaged, moved aside: %r', e)
+        os.replace(_picks_path(), f'{_picks_path()}.bad')
+        return {}
+    except OSError as e:  # unreadable, maybe for now: a save would wipe everyone's lists
+        log.warning('model picks file unreadable: %r', e)
+        raise HTTPException(status_code=503, detail='Favourites are not available right now.')
+
+
+def _write_picks(data: dict) -> None:
+    path = _picks_path()
+    tmp = f'{path}.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(data, f)
+    os.replace(tmp, path)
+
+
+def _pick_list(value: Any) -> list[str]:
+    return [x for x in value if isinstance(x, str)] if isinstance(value, list) else []
+
+
+def _apply_picks(ui: dict, favorite: Any, used: Any) -> dict:
+    favorites, recents = _pick_list(ui.get('favoriteModels')), _pick_list(ui.get('recentModels'))
+    if favorite is not None:
+        if not isinstance(favorite, dict) or not isinstance(favorite.get('on'), bool):
+            raise HTTPException(status_code=400, detail='favorite needs an id and on')
+        model = favorite.get('id')
+        if not isinstance(model, str) or not 0 < len(model) <= _PICK_ID:
+            raise HTTPException(status_code=400, detail='not a model id')
+        favorites = [x for x in favorites if x != model]
+        if favorite['on']:
+            favorites = (favorites + [model])[-_FAVORITES_KEPT:]
+    if used is not None:
+        if (
+            not isinstance(used, list)
+            or len(used) > 16
+            or any(not isinstance(x, str) or not 0 < len(x) <= _PICK_ID for x in used)
+        ):
+            raise HTTPException(status_code=400, detail='not a list of model ids')
+        fresh = list(dict.fromkeys(used))
+        recents = (fresh + [x for x in recents if x not in fresh])[:_RECENTS_KEPT]
+    return {'favoriteModels': favorites, 'recentModels': recents}
+
+
+def _change_picks(user_id: str, favorite: Any, used: Any) -> dict:
+    with _picks_lock:
+        data = _read_picks()
+        mine = data.get(user_id)
+        lists = _apply_picks(mine if isinstance(mine, dict) else {}, favorite, used)
+        if favorite is not None or used is not None:
+            data[user_id] = lists
+            _write_picks(data)
+    return lists
+
+
+@router.post('/picks')
+async def update_picks(request: Request, user=Depends(get_verified_user)):
+    """{"favorite": {"id", "on"}} and/or {"used": [ids]}; an empty body just reads. Answers both lists."""
+    raw = await request.body()
+    try:
+        body = json.loads(raw) if raw else {}
+    except ValueError:
+        raise HTTPException(status_code=400, detail='expected JSON')
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail='expected a JSON object')
+    return await asyncio.to_thread(_change_picks, user.id, body.get('favorite'), body.get('used'))
 
 
 # Temporary chats are never saved; their ids name a browser session (utils/chatId.ts).

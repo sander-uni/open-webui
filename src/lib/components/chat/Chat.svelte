@@ -7,6 +7,7 @@
 		trackInterjections
 	} from '$lib/components/interjections/state'; // fork 0.3.3 (0.3.5: sync, keepUnsent)
 	import { effortParams } from '$lib/components/model-manager/effort'; // fork 0.4.0
+	import { recordModelUse } from '$lib/components/model-manager/picks'; // fork
 	import type { TerminalContext } from '$lib/types';
 	import { v4 as uuidv4 } from 'uuid';
 	import { toast } from 'svelte-sonner';
@@ -3696,6 +3697,15 @@
 		}
 
 		history.currentId = userMessageId;
+
+		// fork: the model picker's recents
+		recordModelUse(
+			bridgeRequest?.modelId
+				? [bridgeRequest.modelId]
+				: atSelectedModel?.id
+					? [atSelectedModel.id]
+					: selectedModels
+		);
 
 		// focus on chat input (skip during voice call to avoid triggering mobile keyboard)
 		if (!$showCallOverlay) {

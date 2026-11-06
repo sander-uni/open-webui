@@ -53,6 +53,23 @@
 	import TagSelector from '$lib/components/workspace/common/TagSelector.svelte';
 
 	import ModelItem from './ModelItem.svelte';
+	// fork: the chat's picker: favourites + recents, Loaded now, the More models window
+	import ModelBrowser from './ModelBrowser.svelte';
+	import LoadedNow from '$lib/components/model-manager/LoadedNow.svelte';
+	import MagicToggle from '$lib/components/model-manager/MagicToggle.svelte';
+	import { searchItems } from '$lib/components/model-manager/modelSearch';
+	import {
+		groupLabel,
+		groupOf,
+		isExperimental,
+		isPreset,
+		experimentalShown,
+		magicSearch,
+		modelPicks,
+		quickPicks,
+		refreshPicks,
+		toggleFavorite
+	} from '$lib/components/model-manager/picks';
 	import {
 		managedId,
 		managerBlock,
@@ -92,8 +109,11 @@
 	export let onSetDefault: () => Promise<void> | void = () => {};
 
 	export let pinModelHandler: (modelId: string) => void = () => {};
+	export let pickerMode = false; // fork
 
 	let show = false;
+	let browserOpen = false; // fork: the More models window
+	let loadedConfirm = false; // fork: LoadedNow's dialog sits above the dropdown
 	let triggerElement: HTMLElement | null = null;
 	let contentElement: HTMLElement | null = null;
 	const portal = (node: HTMLElement) => {
@@ -154,6 +174,7 @@
 		if (show) {
 			searchValue = '';
 			listScrollTop = 0;
+			if (pickerMode) refreshPicks();
 			if (!selectionOnly) {
 				setOllamaVersion();
 				setProviderDownloadConnections();
@@ -178,6 +199,7 @@
 		if (!show || e.detail === 0) return;
 		const target = e.target as Node;
 		if (
+			loadedConfirm || // fork: Loaded now's dialog sits outside the dropdown
 			(triggerElement && triggerElement.contains(target)) ||
 			(contentElement && contentElement.contains(target)) ||
 			((target as HTMLElement).closest?.('.model-selector-child-menu') ?? false)
@@ -193,6 +215,14 @@
 	const handleKeydown = (e: KeyboardEvent) => {
 		if (show && e.key === 'Escape') {
 			if ((e.target as HTMLElement).closest?.('.model-selector-child-menu')) return;
+			if (loadedConfirm) return;
+			// fork: Esc clears the search first, then closes
+			if (pickerMode && searchValue) {
+				e.preventDefault();
+				e.stopPropagation();
+				searchValue = '';
+				return;
+			}
 			e.preventDefault();
 			e.stopPropagation();
 			show = false;
@@ -262,7 +292,37 @@
 		}
 	);
 
-	$: filteredItems = (
+	// fork: the chat's picker lists favourites + recents, and searches by name or Lua pattern
+	$: pickerFavorites = $modelPicks.favoriteModels;
+	$: pickerRecents = $modelPicks.recentModels;
+	$: pickerBase = pickerMode
+		? items.filter((item) => includeHidden || !(item.model?.info?.meta?.hidden ?? false))
+		: [];
+	$: pickerFiltered = pickerBase.filter(
+		(item) =>
+			(!isExperimental(item) || $experimentalShown) &&
+			(!selectedTag ||
+				(item.model?.tags ?? []).some(
+					(tag) => tag.name.toLowerCase() === selectedTag.toLowerCase()
+				)) &&
+			(!selectedConnectionType ||
+				(selectedConnectionType === 'direct'
+					? item.model?.direct
+					: item.model?.connection_type === selectedConnectionType))
+	);
+	$: pickerQuick = pickerMode && !searchValue.trim() && !selectedTag && !selectedConnectionType;
+	$: pickerList = !pickerMode
+		? null
+		: pickerQuick
+			? quickPicks(pickerBase, pickerFavorites, pickerRecents)
+			: searchValue.trim()
+				? searchItems(pickerFiltered, searchValue, $magicSearch).map((item) => ({
+						...item,
+						engineLabel: isPreset(item) ? 'Preset' : groupLabel(groupOf(item, $managerState))
+					}))
+				: pickerFiltered;
+
+	$: upstreamItems = (
 		searchValue
 			? fuse
 					.search(searchValue)
@@ -310,6 +370,8 @@
 						}
 					})
 	).filter((item) => includeHidden || !(item.model?.info?.meta?.hidden ?? false));
+
+	$: filteredItems = pickerList ?? upstreamItems;
 
 	$: sanitizedSearchValue = searchValue.trim();
 	$: downloadTargets =
@@ -395,7 +457,9 @@
 
 		const selectedInFiltered = filteredItems.findIndex((item) => item.value === primaryValue);
 
-		if (selectedInFiltered >= 0) {
+		if (pickerMode && searchValue.trim()) {
+			selectedModelIdx = 0; // fork: Enter takes the best match
+		} else if (selectedInFiltered >= 0) {
 			// The selected model is visible in the current filter
 			selectedModelIdx = selectedInFiltered;
 		} else {
@@ -405,7 +469,7 @@
 
 		// Set the virtual scroll position so the selected item is rendered and centered
 		// fork round 4: cost rows wrap; center the rendered DOM node below.
-		const targetScrollTop = managerCostRows ? 0 : Math.max(0, selectedModelIdx * ITEM_HEIGHT - 128 + ITEM_HEIGHT / 2);
+		const targetScrollTop = managerCostRows || pickerMode ? 0 : Math.max(0, selectedModelIdx * ITEM_HEIGHT - 128 + ITEM_HEIGHT / 2);
 		listScrollTop = targetScrollTop;
 
 		await tick();
@@ -763,6 +827,7 @@
 	};
 
 	onMount(() => {
+		if (pickerMode) refreshPicks();
 		if (items) {
 			tags = items
 				.filter((item) => includeHidden || !(item.model?.info?.meta?.hidden ?? false))
@@ -905,6 +970,12 @@
 		deleteModelTarget = null;
 	};
 
+	$: moreIndex = filteredItems.length + downloadTargets.length;
+	const openBrowser = () => {
+		show = false;
+		browserOpen = true;
+	};
+
 	const ITEM_HEIGHT = 32;
 	const OVERSCAN = 10;
 
@@ -936,8 +1007,9 @@
 	// fork round 4: fixed 32px virtualization cannot position wrapping cost rows.
 	// The small managed-model list renders fully; other lists keep upstream virtualization.
 	$: managerCostRows = !!$managerState?.ux && filteredItems.some((item) => !!managedId(item.model, $managerState));
-	$: visibleStart = managerCostRows ? 0 : Math.max(0, Math.floor(listScrollTop / ITEM_HEIGHT) - OVERSCAN);
-	$: visibleEnd = managerCostRows ? filteredItems.length : Math.min(
+	$: wholeList = managerCostRows || pickerMode; // fork: short list, section headers have their own height
+	$: visibleStart = wholeList ? 0 : Math.max(0, Math.floor(listScrollTop / ITEM_HEIGHT) - OVERSCAN);
+	$: visibleEnd = wholeList ? filteredItems.length : Math.min(
 		filteredItems.length,
 		Math.ceil((listScrollTop + listViewportHeight) / ITEM_HEIGHT) + OVERSCAN
 	);
@@ -1012,6 +1084,30 @@
 		</div>
 	</button>
 
+	{#if browserOpen}
+		<ModelBrowser
+			{items}
+			value={primaryValue}
+			{selectedValues}
+			{compareEnabled}
+			{selectionOnly}
+			favorites={pickerFavorites}
+			{pinModelHandler}
+			{unloadModelHandler}
+			{managerUnloadHandler}
+			{deleteModelHandler}
+			onPick={(item) => {
+				const stays = !!managerBlock(item?.model) || compareEnabled;
+				selectItem(item, 0);
+				if (!stays) browserOpen = false;
+			}}
+			onClose={() => {
+				browserOpen = false;
+				window.setTimeout(focusChatInput, 0);
+			}}
+		/>
+	{/if}
+
 	{#if show}
 		<div
 			use:portal
@@ -1024,6 +1120,9 @@
 				transition:flyAndScale
 			>
 				<slot>
+					{#if pickerMode}
+						<div class="m-0.5 shrink-0"><LoadedNow bind:showConfirm={loadedConfirm} /></div>
+					{/if}
 					{#if searchEnabled}
 						<div class="my-0.5 flex ml-2 mr-0.5 h-[1.6875rem] shrink-0 items-center gap-2">
 							<Search className=" size-3.5 shrink-0" strokeWidth="2" />
@@ -1044,7 +1143,9 @@
 									: undefined}
 								on:keydown={(e) => {
 									if (e.code === 'Enter') {
-										if (selectedModelIdx >= filteredItems.length) {
+										if (pickerMode && selectedModelIdx === moreIndex) {
+											openBrowser();
+										} else if (selectedModelIdx >= filteredItems.length) {
 											const target = downloadTargets[selectedModelIdx - filteredItems.length];
 											if (target && !target.download) {
 												downloadModelHandler(target);
@@ -1057,7 +1158,10 @@
 										e.stopPropagation();
 										selectedModelIdx = Math.min(
 											selectedModelIdx + 1,
-											Math.max(filteredItems.length - 1 + downloadTargets.length, 0)
+											Math.max(
+												filteredItems.length - 1 + downloadTargets.length + (pickerMode ? 1 : 0),
+												0
+											)
 										);
 									} else if (e.code === 'ArrowUp') {
 										e.stopPropagation();
@@ -1075,6 +1179,10 @@
 									});
 								}}
 							/>
+
+							{#if pickerMode}
+								<MagicToggle onChange={() => (selectedModelIdx = 0)} />
+							{/if}
 
 							{#if modelFilterItems.length > 0 || (multipleEnabled && items.length > 0)}
 								<div class="flex min-w-0 shrink-0 items-center gap-0.5">
@@ -1134,7 +1242,11 @@
 					</div>
 
 					<div class="group relative flex min-h-0 flex-1 flex-col">
-						{#if filteredItems.length === 0}
+						{#if filteredItems.length === 0 && pickerQuick && items.length > 0}
+							<div class="px-2 py-2 text-xs text-gray-500 dark:text-gray-400">
+								{$i18n.t('Models you star or send a message with show up here.')}
+							</div>
+						{:else if filteredItems.length === 0}
 							{#if items.length === 0 && $user?.role === 'admin'}
 								<div
 									class="my-2 flex w-full flex-col items-start justify-center px-4 py-3 text-start"
@@ -1184,10 +1296,20 @@
 								<div style="height: {visibleStart * ITEM_HEIGHT}px;" />
 								{#each filteredItems.slice(visibleStart, visibleEnd) as item, i (item.value)}
 									{@const index = visibleStart + i}
+									{#if pickerQuick && (index === 0 || filteredItems[index - 1].section !== item.section)}
+										<div
+											role="presentation"
+											class="px-2 pb-0.5 pt-1.5 text-[0.6875rem] text-gray-500 dark:text-gray-400"
+										>
+											{item.section === 'favorites' ? $i18n.t('Favourites') : $i18n.t('Recent')}
+										</div>
+									{/if}
 									<ModelItem
 										bind:selectedModelIdx
 										{item}
 										{index}
+										favorite={pickerFavorites.includes(item.value)}
+										onToggleFavorite={pickerMode ? () => toggleFavorite(item.value) : null}
 										value={primaryValue}
 										{pinModelHandler}
 										{unloadModelHandler}
@@ -1357,6 +1479,23 @@
 							</Tooltip>
 						{/each}
 					</div>
+
+					{#if pickerMode}
+						<button
+							type="button"
+							id="model-option-{moreIndex}"
+							data-arrow-selected={selectedModelIdx === moreIndex}
+							data-more-models
+							class="focus-ring mt-0.5 flex min-h-8 w-full shrink-0 cursor-pointer select-none items-center justify-between rounded-xl px-2 text-left text-[0.8125rem] text-gray-700 transition-colors duration-75 hover:bg-gray-50/40 dark:text-gray-100 dark:hover:bg-gray-800/40 pointer-coarse:min-h-11 {selectedModelIdx ===
+							moreIndex
+								? 'bg-gray-50/70 dark:bg-gray-800/60'
+								: ''}"
+							on:click={openBrowser}
+						>
+							<span>{$i18n.t('More models')}</span>
+							<ChevronDown className="size-2.5 -rotate-90" strokeWidth="2.5" />
+						</button>
+					{/if}
 
 					{#if showSetDefault && $visibleControls['models.set_default']}
 						<div

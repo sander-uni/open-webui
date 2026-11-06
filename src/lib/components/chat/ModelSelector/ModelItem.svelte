@@ -17,6 +17,7 @@
 	import EllipsisHorizontal from '$lib/components/icons/EllipsisHorizontal.svelte';
 	import { toast } from 'svelte-sonner';
 	import Tag from '$lib/components/icons/Tag.svelte';
+	import Star from '$lib/components/icons/Star.svelte'; // fork
 	import Label from '$lib/components/icons/Label.svelte';
 
 	const i18n = getContext<typeof import('$lib/i18n').default>('i18n');
@@ -33,6 +34,9 @@
 	export let pinModelHandler: (modelId: string) => void = () => {};
 	export let deleteModelHandler: (model: any) => void = () => {};
 	export let selectionOnly = false;
+	// fork: the picker's star. Null = this list has no favourites.
+	export let favorite = false;
+	export let onToggleFavorite: (() => void) | null = null;
 
 	export let onClick: () => void = () => {};
 	export let onEdit: () => void = () => {};
@@ -57,6 +61,10 @@
 	// fork: local model manager state for this model
 	$: mmId = managedId(item.model, $managerState);
 	$: mmBlocked = managerBlock(item.model, $managerState);
+	$: mmLoaded = !!mmId && $managerState?.phase === 'ready' && $managerState?.model === mmId;
+	// fork: search result: where the match is, in the name or (when only there) in the id
+	$: nameMatch = item.match?.field === 'label' ? item.match : null;
+	$: idMatch = item.match?.field === 'value' ? item.match : null;
 	// fork 0.3.4: "Unload" in the More menu of the model the manager has loaded (admins)
 	$: mmCanUnload =
 		$user?.role === 'admin' &&
@@ -141,10 +149,34 @@
 			<div class="flex min-w-0 items-center">
 				<Tooltip content={`${item.label} (${item.value})`} placement="top-start">
 					<div class="line-clamp-1">
-						{item.label}
+						{#if nameMatch}
+							{item.label.slice(0, nameMatch.start)}<mark
+								class="rounded-sm bg-amber-200 text-inherit dark:bg-amber-500/40"
+								>{item.label.slice(nameMatch.start, nameMatch.end)}</mark
+							>{item.label.slice(nameMatch.end)}
+						{:else}
+							{item.label}
+						{/if}
 					</div>
 				</Tooltip>
 			</div>
+
+			{#if idMatch}
+				<div class="min-w-0 truncate text-[0.6875rem] text-gray-500 dark:text-gray-400">
+					{item.value.slice(0, idMatch.start)}<mark
+						class="rounded-sm bg-amber-200 text-inherit dark:bg-amber-500/40"
+						>{item.value.slice(idMatch.start, idMatch.end)}</mark
+					>{item.value.slice(idMatch.end)}
+				</div>
+			{/if}
+
+			{#if item.engineLabel}
+				<div
+					class="shrink-0 rounded-md bg-gray-100 px-1 text-[0.625rem] leading-4 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+				>
+					{$i18n.t(item.engineLabel)}
+				</div>
+			{/if}
 
 			<div class="flex shrink-0 items-center gap-1.5">
 				{#if item.model.owned_by === 'ollama'}
@@ -191,7 +223,7 @@
 					{/if}
 				{/if}
 
-				{#if item.model.loaded}
+				{#if item.model.loaded || mmLoaded}
 					<div class="flex items-center px-0.5">
 						<Tooltip
 							content={item.model.ollama?.expires_at &&
@@ -319,7 +351,7 @@
 		{#if !selectionOnly && $user?.role === 'admin' && item.model.loaded}
 			<Tooltip
 				content={`${$i18n.t('Eject')}`}
-				className="flex-shrink-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100 opacity-0 "
+				className="flex-shrink-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100 opacity-0 pointer-coarse:opacity-100"
 			>
 				<button
 					class="focus-ring flex {($settings?.highContrastMode ?? false)
@@ -335,6 +367,28 @@
 					<ArrowUpTray className="size-3" />
 				</button>
 			</Tooltip>
+		{/if}
+
+		{#if onToggleFavorite}
+			<span
+				role="button"
+				tabindex="0"
+				class="focus-ring flex shrink-0 cursor-pointer items-center justify-center rounded-md p-0.5 transition pointer-coarse:p-2 {favorite
+					? 'text-amber-500 [&_svg]:fill-current'
+					: 'text-gray-400 hover:text-amber-500 dark:text-gray-500'}"
+				aria-label={favorite ? $i18n.t('Remove from favourites') : $i18n.t('Add to favourites')}
+				aria-pressed={favorite}
+				data-star={item.value}
+				on:click|preventDefault|stopPropagation={() => onToggleFavorite?.()}
+				on:keydown|stopPropagation={(e) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault();
+						onToggleFavorite?.();
+					}
+				}}
+			>
+				<Star className="size-3.5" strokeWidth="2" />
+			</span>
 		{/if}
 
 		{#if !selectionOnly}
