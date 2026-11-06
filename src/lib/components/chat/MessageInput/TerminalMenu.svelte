@@ -121,6 +121,8 @@
 		selectedDirectTerminal?.name ||
 		selectedDirectTerminal?.url?.replace(/^https?:\/\//, '') ||
 		$i18n.t('Terminal');
+	// fork: icon only; the chosen terminal's name is on the tooltip (and for screen readers)
+	$: terminalName = $selectedTerminalId && selectedLabel ? selectedLabel : $i18n.t('Terminal');
 	$: if (disabled && show) show = false;
 
 	$: triggerClass = `flex items-center gap-1.5 translate-y-[1px] text-[0.8125rem] transition rounded-lg ${
@@ -134,38 +136,26 @@
 
 <div class="flex items-center translate-x-0.5">
 	{#if disabled}
-		<Tooltip content={$i18n.t('Terminal')} placement="top">
+		<Tooltip content={terminalName} placement="top">
 			<button
 				type="button"
 				disabled
 				aria-disabled="true"
-				aria-label={$selectedTerminalId && selectedLabel ? undefined : $i18n.t('Terminal')}
+				aria-label={terminalName}
 				class={triggerClass}
 			>
 				<Cloud className="size-3.5" strokeWidth="2" />
-
-				{#if $selectedTerminalId && selectedLabel}
-					<span class="truncate text-[0.8125rem] max-w-[6.25rem] sm:max-w-[9.375rem]"
-						>{selectedLabel}</span
-					>
-				{/if}
 			</button>
 		</Tooltip>
 	{:else}
 		<Dropdown bind:show align="start">
-			<Tooltip content={$i18n.t('Terminal')} placement="top">
+			<Tooltip content={terminalName} placement="top">
 				<button
 					type="button"
-					aria-label={$selectedTerminalId && selectedLabel ? undefined : $i18n.t('Terminal')}
+					aria-label={terminalName}
 					class={triggerClass}
 				>
 					<Cloud className="size-3.5" strokeWidth="2" />
-
-					{#if $selectedTerminalId && selectedLabel}
-						<span class="truncate text-[0.8125rem] max-w-[6.25rem] sm:max-w-[9.375rem]"
-							>{selectedLabel}</span
-						>
-					{/if}
 				</button>
 			</Tooltip>
 
