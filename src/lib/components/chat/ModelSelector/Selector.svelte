@@ -1112,6 +1112,7 @@
 		<div
 			use:portal
 			bind:this={contentElement}
+			data-model-picker
 			style="position: fixed; z-index: 9999; top: 0; left: 0; width: max-content;"
 		>
 			<div

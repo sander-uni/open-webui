@@ -175,8 +175,8 @@
 
 	const onKeydown = (e: KeyboardEvent) => {
 		const target = e.target as HTMLElement;
-		// A dialog or a row's menu above this window answers its own keys.
-		if (confirmUnload || document.querySelector('.modal')) return;
+		// A dialog, the picker or a row's menu above this window answers its own keys.
+		if (confirmUnload || document.querySelector('.modal, [data-model-picker]')) return;
 		if (target?.closest?.('.model-selector-child-menu')) return;
 		if (e.key === 'Escape') {
 			e.preventDefault();
@@ -208,6 +208,29 @@
 		}
 	};
 
+	// A click on the background closes the window like its X. It has to start out there too, so a
+	// drag or resize that ends outside doesn't count, and whatever sits above the window goes first:
+	// a dialog, a row's menu (that click only closes the menu), a tooltip or a toast.
+	let pressedOutside = false;
+
+	const onPointerDown = (e: PointerEvent) => {
+		const target = e.target as HTMLElement;
+		pressedOutside =
+			!root?.contains(target) &&
+			!confirmUnload &&
+			!document.querySelector('.modal, .model-selector-child-menu') &&
+			!target?.closest?.('[data-tippy-root], [data-sonner-toaster], [data-model-picker]');
+	};
+
+	const onPointerCancel = () => (pressedOutside = false); // a scroll on a touch screen
+
+	const onWindowClick = (e: MouseEvent) => {
+		// detail 0 = not a pointer: a shortcut clicking a button
+		const close = pressedOutside && e.detail !== 0 && !root?.contains(e.target as Node);
+		pressedOutside = false;
+		if (close) onClose();
+	};
+
 	const onInput = () => {
 		cursor = 0;
 		if (list) list.scrollTop = 0;
@@ -222,6 +245,9 @@
 		center();
 		window.addEventListener('resize', onViewport);
 		window.addEventListener('keydown', onKeydown, true);
+		window.addEventListener('pointerdown', onPointerDown, true);
+		window.addEventListener('pointercancel', onPointerCancel, true);
+		window.addEventListener('click', onWindowClick, true);
 		// Not on touch: the keyboard would cover the list before anything is asked of it.
 		if (!$mobile && !window.matchMedia?.('(pointer: coarse)')?.matches) {
 			tick().then(() => document.getElementById('model-browser-search')?.focus());
@@ -231,6 +257,9 @@
 		if (typeof window === 'undefined') return;
 		window.removeEventListener('resize', onViewport);
 		window.removeEventListener('keydown', onKeydown, true);
+		window.removeEventListener('pointerdown', onPointerDown, true);
+		window.removeEventListener('pointercancel', onPointerCancel, true);
+		window.removeEventListener('click', onWindowClick, true);
 	});
 
 	const EDGES = [
