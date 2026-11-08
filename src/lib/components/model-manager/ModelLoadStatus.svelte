@@ -22,13 +22,20 @@
 	// While the service can't be reached, only models it managed before get the notice.
 	$: offlineId = $managerConnection === 'offline' ? knownManagedId(model) : null;
 	$: view = id ? state?.ux?.models?.[id] : null;
-	$: op = state?.ux?.operation?.outcome === 'running' ? state.ux.operation : null;
+	// modelmgr 0.12.0: a toolbox model has its own slot; the 5090's operation is not about it
+	$: toolbox = view?.engine === 'toolbox';
+	$: op = !toolbox && state?.ux?.operation?.outcome === 'running' ? state.ux.operation : null;
 	$: admin = $user?.role === 'admin';
 	$: error = view?.error;
 	// 0.3.2: the input row only appears while the model is not ready (the stats next to the
 	// model name cover a ready one); the under-reply card only while something is happening.
 	$: show = !!id && !!view && (!!op || !!error || !!view.waiting || (!inline && !ready));
-	$: ready = !!id && state?.phase === 'ready' && state?.model === id;
+	$: ready =
+		!!id &&
+		(toolbox
+			? state?.toolbox_slot?.phase === 'ready' && state?.toolbox_slot?.model === id
+			: state?.phase === 'ready' && state?.model === id);
+	$: gpuLoading = !toolbox && state?.phase === 'loading';
 	$: legacy = !!id && !!state && !state.ux && !inline;
 	$: visible = !!offlineId || show || legacy;
 	const act = async (fn: () => Promise<unknown>) => {
@@ -84,7 +91,7 @@
 				<p class="mt-1">{state?.ux?.waiting_action}</p>
 				{#if !admin}<p>Only an admin can cancel shared preparation. You can stop waiting in this chat.</p>{/if}
 			{/if}
-			{#if admin && state?.phase === 'loading'}
+			{#if admin && gpuLoading}
 				<div class="mt-1 flex flex-wrap gap-2">
 					<button type="button" class={btn} disabled={acting || !state?.ux?.actions?.can_cancel} on:click={cancel}
 						>Cancel loading for everyone</button
@@ -98,9 +105,9 @@
 	</div>
 {:else}
 	{#snippet actions()}
-		{#if show && admin && (state?.phase === 'loading' || !ready)}
+		{#if show && admin && (gpuLoading || !ready)}
 			<div class="flex shrink-0 flex-wrap gap-2">
-				{#if state?.phase === 'loading'}
+				{#if gpuLoading}
 					<button type="button" class={btn} disabled={acting || !state?.ux?.actions?.can_cancel} on:click={cancel}
 						>Cancel loading for everyone</button
 					>

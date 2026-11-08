@@ -2092,6 +2092,14 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             form_data['model'] = selected_model_id
             metadata['selected_model_id'] = selected_model_id
 
+    # fork (modelmgr 0.12.0): the model answering this reply, for the toolbox tools' gate (tools see the metadata;
+    # metadata['model'] is a multi-model reply's first model, a saved message's model can be stale)
+    if isinstance(model, dict) and model.get('id'):
+        metadata['answering_model'] = {
+            'id': str(model['id']),
+            'base_model_id': str(((model.get('info') or {}).get('base_model_id')) or ''),
+        }
+
     # Keep the template before apply_params_to_form_data consumes the model parameters.
     model_system_prompt_template = (form_data.get('params') or {}).get('system')
 
@@ -2712,7 +2720,7 @@ async def process_chat_payload(request, form_data, user, metadata, model):
                             async def make_tool_function(client, function_name, server_id=server_id):
                                 async def tool_function(**kwargs):
                                     # fork 0.3.8: toolbox tools wait for the toolbox miner to pause
-                                    async with toolbox_hold(server_id, function_name, metadata):
+                                    async with toolbox_hold(server_id, function_name, metadata, model):
                                         return await client.call_tool(
                                             function_name,
                                             function_args=kwargs,

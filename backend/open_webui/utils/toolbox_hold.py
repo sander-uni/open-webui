@@ -33,7 +33,8 @@ log = logging.getLogger(__name__)
 
 MODEL_MANAGER_URL = os.environ.get('MODEL_MANAGER_URL', 'http://127.0.0.1:8099').rstrip('/')
 # modelmgr waits up to MODELMGR_TOOLBOX_WAIT_S (30 s) for the toolbox, plus the SSH connect.
-_BEGIN_TIMEOUT = aiohttp.ClientTimeout(total=90, sock_connect=5)
+# modelmgr 0.12.0: and first for a toolbox model's running answer (MODELMGR_TOOLBOX_ENGINE_EVICT_WAIT_S, 30 min).
+_BEGIN_TIMEOUT = aiohttp.ClientTimeout(total=35 * 60, sock_connect=5)
 _SHORT_TIMEOUT = aiohttp.ClientTimeout(total=10, sock_connect=5)
 BEAT_S = 30
 # Until modelmgr has answered once: the Blender MCP on the toolbox.
@@ -142,6 +143,20 @@ async def _post(path: str, body: dict, timeout: aiohttp.ClientTimeout) -> tuple[
             return resp.status, data if isinstance(data, dict) else {}
 
 
+def _caller(metadata: dict, model: dict | None = None) -> dict:
+    """The answering model and, for a workspace model, the base model it is built on. `model` is this answer's own
+    model (process_chat_payload's); metadata['model'] is the first model of a multi-model reply, the fallback."""
+    if not isinstance(model, dict) or not model.get('id'):
+        model = metadata.get('model') if isinstance(metadata.get('model'), dict) else {}
+    info = model.get('info') if isinstance(model.get('info'), dict) else {}
+    out = {}
+    if isinstance(model.get('id'), str) and model['id']:
+        out['model'] = model['id'][:500]
+    if isinstance(info.get('base_model_id'), str) and info['base_model_id']:
+        out['base_model'] = info['base_model_id'][:500]
+    return out
+
+
 def _run_id(metadata: dict) -> str:
     run = metadata.get('toolbox_run')
     if not run:
@@ -162,7 +177,7 @@ async def _beat_loop() -> None:
 
 
 @contextlib.asynccontextmanager
-async def toolbox_hold(server_id: str, tool: str, metadata: dict):
+async def toolbox_hold(server_id: str, tool: str, metadata: dict, model: dict | None = None):
     global _beat_task
     url = await _server_url(server_id)
     if not url or not is_toolbox_tool(url):
@@ -172,7 +187,14 @@ async def toolbox_hold(server_id: str, tool: str, metadata: dict):
     try:
         status, data = await _post(
             '/mm/toolbox/begin',
-            {'url': url, 'run': run, 'tool': tool, 'chat_id': metadata.get('chat_id') or ''},
+            {
+                'url': url,
+                'run': run,
+                'tool': tool,
+                'chat_id': metadata.get('chat_id') or '',
+                # modelmgr 0.12.0: a toolbox model never runs a toolbox tool (it runs on that GPU)
+                **_caller(metadata, model),
+            },
             _BEGIN_TIMEOUT,
         )
     except Exception as e:

@@ -2,6 +2,7 @@
 	// Fork addition: what holds the GPU now, at the top of the model picker and of the More models
 	// window, with Unload. The same row for ComfyUI (which is not in the model list) and local models.
 	// Unloading stops the engine's process, so its VRAM, RAM and caches go with it.
+	// modelmgr 0.12.0: a second row for the toolbox PC's own engine (its own slot, its own Unload).
 	import { getContext } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { models, user } from '$lib/stores';
@@ -28,6 +29,23 @@
 	$: running = state?.inflight ?? 0;
 	$: waiting = state?.jobs_waiting ?? 0;
 	$: canUnload = phase === 'ready' && !busy;
+
+	// The toolbox slot (null when the toolbox engine is off).
+	$: tb = state?.toolbox_slot ?? null;
+	$: tbPhase = tb?.phase ?? 'idle';
+	$: tbId = tbPhase === 'ready' ? tb?.model : tbPhase === 'loading' || tbPhase === 'unloading' ? tb?.target : null;
+	$: tbVisible = $user?.role === 'admin' && !!tbId;
+	$: tbName = (($models ?? []).find((m) => m.id === tbId) ??
+		($models ?? []).find((m) => !m?.info?.base_model_id && managedId(m, state) === tbId))?.name ?? tbId;
+	$: tbStatus = !tb
+		? ''
+		: tbPhase === 'loading'
+			? $i18n.t('starting')
+			: tbPhase === 'unloading'
+				? $i18n.t('being put away')
+				: tb.inflight
+					? $i18n.t('answering')
+					: `${$i18n.t('idle')} · ${away(tb.unload_in_s, false)}`;
 
 	const minutes = (seconds: number) => Math.max(1, Math.round(seconds / 60));
 
@@ -56,12 +74,12 @@
 
 	let busy = false;
 
-	const unload = async (force: boolean, target: string) => {
+	const unload = async (force: boolean, target: string, label: string = name) => {
 		busy = true;
-		const pending = toast.loading($i18n.t('Putting {{model}} away…', { model: name }));
+		const pending = toast.loading($i18n.t('Putting {{model}} away…', { model: label }));
 		try {
 			await unloadManagedModel(localStorage.token, force, target);
-			toast.success($i18n.t('{{model}} was put away.', { model: name }), { id: pending });
+			toast.success($i18n.t('{{model}} was put away.', { model: label }), { id: pending });
 		} catch (error) {
 			toast.error(String(error), { id: pending });
 		}
@@ -87,28 +105,28 @@
 		refreshManagerState();
 	};
 
-	let confirmFor: { id: string; force: boolean } | null = null;
+	let confirmFor: { id: string; force: boolean; name: string; job: boolean } | null = null;
 
-	const onUnload = () => {
-		if (!id) return;
-		if (running) {
-			confirmFor = { id, force: true };
+	const onUnload = (target = id, label = name, inflight = running) => {
+		if (!target) return;
+		if (inflight) {
+			confirmFor = { id: target, force: true, name: label ?? target, job: target === COMFY };
 			showConfirm = true;
 		} else {
-			unload(false, id);
+			unload(false, target, label ?? target);
 		}
 	};
 </script>
 
 <ConfirmDialog
 	bind:show={showConfirm}
-	title={$i18n.t('Unload {{model}}?', { model: name })}
-	message={id === COMFY
+	title={$i18n.t('Unload {{model}}?', { model: confirmFor?.name ?? name })}
+	message={confirmFor?.job
 		? $i18n.t('A job is running. Unloading now cuts it off.')
 		: $i18n.t('A reply is running. Unloading now cuts it off.')}
 	confirmLabel={$i18n.t('Unload')}
 	on:confirm={() => {
-		if (confirmFor) unload(confirmFor.force, confirmFor.id);
+		if (confirmFor) unload(confirmFor.force, confirmFor.id, confirmFor.name);
 		confirmFor = null;
 	}}
 	on:cancel={() => {
@@ -157,7 +175,36 @@
 				type="button"
 				class="focus-ring shrink-0 rounded-lg border border-gray-200/70 px-2 py-0.5 text-[0.75rem] transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:hover:bg-white/[0.05] pointer-coarse:px-3 pointer-coarse:py-1.5"
 				disabled={!canUnload}
-				on:click|stopPropagation={onUnload}
+				on:click|stopPropagation={() => onUnload()}
+			>
+				{$i18n.t('Unload')}
+			</button>
+		{/if}
+	</div>
+{/if}
+
+{#if tbVisible}
+	<div
+		class="mt-1 flex shrink-0 items-center gap-2 rounded-xl bg-gray-50/70 px-2 py-1 text-[0.75rem] text-gray-700 dark:bg-gray-800/50 dark:text-gray-200"
+		data-loaded-now-toolbox
+	>
+		<span class="relative flex size-1.5 shrink-0" aria-hidden="true">
+			<span
+				class="relative inline-flex size-1.5 rounded-full {tbPhase === 'ready'
+					? 'bg-green-500'
+					: 'bg-amber-400 animate-pulse'}"
+			/>
+		</span>
+		<div class="min-w-0 flex-1 truncate" title="{tbName} · {tbStatus}">
+			<span>{tbName}</span>
+			<span class="text-gray-500 dark:text-gray-400"> · {tbStatus}</span>
+		</div>
+		{#if tbPhase === 'ready'}
+			<button
+				type="button"
+				class="focus-ring shrink-0 rounded-lg border border-gray-200/70 px-2 py-0.5 text-[0.75rem] transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:hover:bg-white/[0.05] pointer-coarse:px-3 pointer-coarse:py-1.5"
+				disabled={busy}
+				on:click|stopPropagation={() => onUnload(tbId, tbName, tb?.inflight ?? 0)}
 			>
 				{$i18n.t('Unload')}
 			</button>

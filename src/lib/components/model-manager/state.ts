@@ -20,6 +20,20 @@ export type ManagerState = {
 	error: { model: string | null; message: string } | null;
 	managed: string[];
 	ux?: any; // Round 4: manager-owned copy, permissions and ordered plan.
+	// modelmgr 0.12.0: the toolbox PC's own engine, a second slot (null when it is off)
+	toolbox_slot?: {
+		enabled: boolean;
+		phase: 'idle' | 'loading' | 'ready' | 'unloading';
+		model: string | null;
+		target: string | null;
+		detail: string | null;
+		elapsed_s: number | null;
+		inflight: number;
+		switch_to: string | null;
+		unload_in_s: number | null;
+		tools_busy: boolean;
+		error: { model: string | null; message: string } | null;
+	} | null;
 };
 
 let refreshNow: () => void = () => {};
@@ -61,7 +75,14 @@ export const managerState = writable<ManagerState | null>(null, (set) => {
 					set(state);
 					if (Array.isArray(state.managed)) knownManaged = state.managed;
 					managerConnection.set('online');
-					if (state.phase === 'loading' || state.phase === 'unloading' || state.switch_to) {
+					const tb = state.toolbox_slot;
+					if (
+						state.phase === 'loading' ||
+						state.phase === 'unloading' ||
+						state.switch_to ||
+						tb?.phase === 'loading' ||
+						tb?.phase === 'unloading'
+					) {
 						delay = 1000;
 					}
 				} else {

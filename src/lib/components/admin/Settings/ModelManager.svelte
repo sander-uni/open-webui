@@ -45,6 +45,9 @@
 	let idleMinutes: number | string = 60;
 	let idleDirty = false;
 	let savingIdle = false;
+	// modelmgr 0.12.0: the toolbox engine's own idle unload
+	let tbIdleMinutes: number | string = 60;
+	let tbIdleDirty = false;
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let destroyed = false;
 
@@ -77,6 +80,9 @@
 			unreachable = '';
 			if (!idleDirty) {
 				idleMinutes = status?.settings?.idle_minutes ?? 60;
+			}
+			if (!tbIdleDirty) {
+				tbIdleMinutes = status?.toolbox_engine?.idle_minutes ?? 60;
 			}
 		} catch (error) {
 			if (destroyed) return;
@@ -230,6 +236,32 @@
 			savingIdle = false;
 			await refresh();
 		}
+	};
+
+	const saveTbIdle = async () => {
+		const value = Number(tbIdleMinutes);
+		if (!Number.isInteger(value) || value < 0) {
+			toast.error($i18n.t('Enter a whole number of minutes (0 = never).'));
+			return;
+		}
+		savingIdle = true;
+		try {
+			await saveModelManagerSettings(localStorage.token, { toolbox_idle_minutes: value });
+			tbIdleDirty = false;
+			toast.success($i18n.t('Settings saved successfully!'));
+		} catch (error) {
+			toast.error(`${error}`);
+		} finally {
+			savingIdle = false;
+			await refresh();
+		}
+	};
+
+	const unloadToolbox = () => {
+		const tb = status?.toolbox_engine;
+		if (!tb?.model) return;
+		if (tb.inflight && !window.confirm($i18n.t('A reply is running. Unloading now cuts it off.'))) return;
+		run(() => unloadManagedModel(localStorage.token, !!tb.inflight, tb.model));
 	};
 
 	// 0.3.2: "Show in model picker" uses Open WebUI's own hide flag (the eye in Admin Settings >
@@ -518,6 +550,32 @@
 				<button type="submit" disabled={savingIdle || !idleDirty || !!unreachable}>{$i18n.t('Save')}</button>
 				<p class="text-xs">{$i18n.t('0 means never. A pinned model stays ready. The next message after unloading needs a fresh start; its cost is shown below. Shortening this time may put an already quiet model away immediately.')}</p>
 			</form>
+			{#if status.toolbox_engine}
+				{@const tb = status.toolbox_engine}
+				<!-- modelmgr 0.12.0: the toolbox PC's own engine, a second slot beside this PC's GPU -->
+				<div class="space-y-2 rounded-lg border border-gray-200/70 p-2 dark:border-white/[0.08]" data-toolbox-engine>
+					<h3 class="font-medium">{$i18n.t('Toolbox engine')}</h3>
+					<p class="text-xs">
+						{tb.phase === 'ready'
+							? `${tb.model} · ${tb.inflight ? $i18n.t('answering') : $i18n.t('idle')}`
+							: tb.phase === 'idle'
+								? $i18n.t('Nothing loaded')
+								: `${tb.target ?? ''} · ${tb.phase} · ${tb.detail ?? ''}`}
+						{#if tb.tools_busy} · {$i18n.t('a toolbox tool (Blender or voice) is running')}{/if}
+						{#if tb.phase !== 'idle'} · {$i18n.t('tunnel')} {tb.tunnel?.up ? 'up' : 'down'}{/if}
+					</p>
+					{#if tb.error}<p class="text-xs text-red-600 dark:text-red-400">{tb.error.message}</p>{/if}
+					{#if tb.warning}<p class="text-xs text-amber-600 dark:text-amber-400">{tb.warning}</p>{/if}
+					<button type="button" class="rounded-lg border border-gray-200/70 px-2.5 py-1 text-xs text-gray-700 transition hover:bg-gray-100 disabled:opacity-50 dark:border-white/[0.08] dark:text-gray-300 dark:hover:bg-white/[0.05]"
+						disabled={busy || !!unreachable || tb.phase !== 'ready'} on:click={unloadToolbox}>{$i18n.t('Unload toolbox model')}</button>
+					<form class="space-y-2" on:submit|preventDefault={saveTbIdle}>
+						<label for="mm-tb-idle">{$i18n.t('Put the toolbox model away after this many quiet minutes')}</label>
+						<input id="mm-tb-idle" class="w-24 rounded border p-1" type="number" min="0" max="100000" step="1" bind:value={tbIdleMinutes} on:input={() => (tbIdleDirty = true)} />
+						<button type="submit" disabled={savingIdle || !tbIdleDirty || !!unreachable}>{$i18n.t('Save')}</button>
+						<p class="text-xs">{$i18n.t('0 means never. Its own setting: the toolbox model never touches this PC’s GPU or miner. Blender and voice put it away while they run.')}</p>
+					</form>
+				</div>
+			{/if}
 			<div class="space-y-1">
 				<h3 class="font-medium">{$i18n.t('Models')}</h3>
 				{#if sharedWhy}<p class="text-xs">{sharedWhy}</p>{/if}
