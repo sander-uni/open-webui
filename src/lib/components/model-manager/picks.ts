@@ -114,6 +114,7 @@ export const GROUPS = [
 	{ key: 'ninfer', label: 'ninfer', open: true },
 	{ key: 'strata', label: 'Strata', open: true },
 	{ key: 'ollama', label: 'Ollama', open: true },
+	{ key: 'toolbox', label: 'Toolbox', open: true },
 	{ key: 'chatgpt', label: 'ChatGPT', open: true },
 	{ key: 'cloud', label: 'Cloud', open: false },
 	{ key: 'presets', label: 'Presets', open: true }
@@ -131,7 +132,7 @@ export const groupOf = (item: any, state: ManagerState | null): GroupKey => {
 	if (isPreset(item)) return 'presets';
 	const id = managedId(item?.model, state);
 	const engine = id ? state?.ux?.models?.[id]?.engine : null;
-	if (engine === 'ninfer' || engine === 'strata' || engine === 'ollama') return engine;
+	if (engine === 'ninfer' || engine === 'strata' || engine === 'ollama' || engine === 'toolbox') return engine;
 	if (String(item?.value ?? '').startsWith('codex/')) return 'chatgpt';
 	return 'cloud';
 };
