@@ -49,7 +49,13 @@ export const pinManagedModel = (token: string, pinned: boolean) =>
 
 export const saveModelManagerSettings = (
 	token: string,
-	settings: { idle_minutes?: number; hidden?: string[]; hidden_add?: string[]; hidden_remove?: string[] }
+	settings: {
+		idle_minutes?: number;
+		toolbox_idle_minutes?: number;
+		hidden?: string[];
+		hidden_add?: string[];
+		hidden_remove?: string[];
+	}
 ) => call(token, 'POST', '/settings', settings);
 
 export const getModelManagerFilter = (token: string) => call(token, 'GET', '/filter');

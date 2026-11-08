@@ -11,7 +11,14 @@
 	import Dropdown from '$lib/components/common/Dropdown.svelte';
 	import DropdownMenu from '$lib/components/common/DropdownMenu.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
-	import { budgetText, effortMeta, nearestLevel, pickedEffort, type EffortMeta } from './effort';
+	import {
+		budgetText,
+		effortMeta,
+		levelLabel,
+		nearestLevel,
+		pickedEffort,
+		type EffortMeta
+	} from './effort';
 
 	const i18n = getContext('i18n');
 
@@ -72,12 +79,12 @@
 		<Tooltip content={help} placement="top" className="flex shrink-0 self-center">
 			<button
 				type="button"
-				aria-label={`${$i18n.t('Reasoning effort')}: ${shown}`}
+				aria-label={`${$i18n.t('Reasoning effort')}: ${levelLabel(shown)}`}
 				class="flex items-center gap-1 rounded-lg px-1.5 py-1 text-[0.75rem] leading-none whitespace-nowrap transition-colors duration-100 hover:bg-gray-50/40 dark:hover:bg-gray-800/40 {picked
 					? 'text-gray-700 dark:text-gray-200'
 					: 'text-gray-500 dark:text-gray-400'}"
 			>
-				<span>{shown}</span>
+				<span>{levelLabel(shown)}</span>
 				<svg class="size-3 opacity-60" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
 					><path d="M5.3 7.3a1 1 0 0 1 1.4 0L10 10.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.4z" /></svg
 				>
@@ -94,7 +101,7 @@
 						on:click={() => choose(level)}
 					>
 						<span class="w-3 shrink-0 text-center">{shown === level ? '✓' : ''}</span>
-						<span class="min-w-0 flex-1 truncate">{level}</span>
+						<span class="min-w-0 flex-1 truncate">{levelLabel(level)}</span>
 						{#if budgets[level] !== undefined}
 							<span class="text-[0.6875rem] text-gray-500 tabular-nums"
 								>{budgets[level] ? `${Math.round((budgets[level] ?? 0) / 1024)}K` : '∞'}</span

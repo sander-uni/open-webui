@@ -65,6 +65,10 @@ export const effortParams = (model: any, models: any[], settings: any): { reason
 	return picked ? { reasoning_effort: picked } : {};
 };
 
+/** How a level is shown: modelmgr 0.12.1 lists "none" (thinking off) first for local and toolbox models. */
+export const levelLabel = (level: string | null | undefined): string =>
+	level === 'none' ? 'no thinking' : (level ?? '');
+
 export const budgetText = (tokens: number | null | undefined): string => {
 	if (tokens === null || tokens === undefined) return '';
 	if (tokens === 0) return 'no thinking budget';

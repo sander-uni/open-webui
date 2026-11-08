@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { budgetText, effortMeta, effortParams, nearestLevel, pickedEffort } from './effort';
+import { budgetText, effortMeta, effortParams, levelLabel, nearestLevel, pickedEffort } from './effort';
 
 const codex = { id: 'codex/gpt-6.1-sol', modelmgr: { efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], default_effort: 'low', provider: 'codex' } };
 const qwen = {
@@ -42,5 +42,13 @@ describe('effort levels', () => {
 		expect(budgetText(0)).toBe('no thinking budget');
 		expect(budgetText(24576)).toBe('thinks up to 24K tokens');
 		expect(budgetText(null)).toBe('');
+	});
+});
+
+describe('levelLabel', () => {
+	it('shows none as no thinking, other levels as they are', () => {
+		expect(levelLabel('none')).toBe('no thinking');
+		expect(levelLabel('xhigh')).toBe('xhigh');
+		expect(levelLabel(null)).toBe('');
 	});
 });
