@@ -74,4 +74,16 @@ describe('compactions in a reply', () => {
 		expect(label({ status: 'incomplete' }).state).toBe('interrupted');
 		expect(label({ n: null }).state).toBe('interrupted');
 	});
+
+	it('says when the summary covers the removed steps only (ctxproxy 0.32)', () => {
+		const items = buildOutputDisplayItems([call('a'), result('a'), compaction({ summary_of: 'removed_steps' })]);
+		expect((items[1] as any).removedOnly).toBe(true);
+		expect((buildOutputDisplayItems([compaction()])[0] as any).removedOnly).toBe(false);
+		const l = label({ removedOnly: true });
+		expect(l.state).toBe('done');
+		expect(l.title).toBe('Compaction #3: summary of the removed steps only');
+		expect(l.detail).toContain('newest steps kept as they are');
+		// a cut stays a cut
+		expect(label({ kind: 'cut', removedOnly: true }).title).toBe('Compaction #3: context cut without a summary');
+	});
 });

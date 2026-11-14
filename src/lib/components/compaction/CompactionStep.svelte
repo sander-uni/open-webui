@@ -16,6 +16,7 @@
 	export let reason = '';
 	export let seconds: number | null = null;
 	export let dropped: number | null = null;
+	export let removedOnly = false;
 	export let chatId = '';
 	export let messageId = '';
 	export let messageDone = true;
@@ -23,7 +24,7 @@
 
 	let showNote = false;
 
-	$: label = compactionLabel({ kind, status, n, seconds, dropped, messageDone });
+	$: label = compactionLabel({ kind, status, n, seconds, dropped, messageDone, removedOnly });
 	$: canView = label.state === 'done' && n !== null && !!chatId && !!messageId;
 </script>
 
@@ -58,5 +59,5 @@
 </div>
 
 {#if showNote && n !== null}
-	<CompactionSummaryModal bind:show={showNote} {chatId} {messageId} {n} {conv} {kind} />
+	<CompactionSummaryModal bind:show={showNote} {chatId} {messageId} {n} {conv} {kind} {removedOnly} />
 {/if}

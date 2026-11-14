@@ -174,6 +174,7 @@
 			reason={displayItem.reason}
 			seconds={displayItem.seconds}
 			dropped={displayItem.dropped}
+			removedOnly={displayItem.removedOnly}
 			{chatId}
 			{messageId}
 			messageDone={done}

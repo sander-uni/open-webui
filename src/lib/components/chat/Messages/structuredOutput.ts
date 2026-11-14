@@ -88,6 +88,7 @@ export type OutputDisplayItem =
 			reason: string;
 			seconds: number | null;
 			dropped: number | null;
+			removedOnly: boolean;
 	  }
 	| {
 			type: 'context_compaction';
@@ -512,7 +513,9 @@ export function buildOutputDisplayItems(
 				conv: typeof item.conv === 'string' ? item.conv : null,
 				reason: typeof item.reason === 'string' ? item.reason : '',
 				seconds: positiveNumber(item.seconds),
-				dropped: positiveNumber(item.dropped_steps)
+				dropped: positiveNumber(item.dropped_steps),
+				// ctxproxy 0.32: the summary was written from the removed steps only
+				removedOnly: item.summary_of === 'removed_steps'
 			});
 			return;
 		}

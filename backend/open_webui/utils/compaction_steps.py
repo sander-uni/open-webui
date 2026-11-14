@@ -5,6 +5,7 @@ compacts the conversation before a model request:
 
     {"compaction": "start"}
     {"compaction": "done", "n": 3, "conv": "<key>", "seconds": 41.2}
+    {"compaction": "done", ..., "summary_of": "removed_steps"}   # 0.32: written from the removed steps only
     {"compaction": "failed", "reason": "..."}
     {"compaction": "cut", "n": 4, "conv": "<key>", "dropped_steps": 12}   # no summary written
 
@@ -115,6 +116,9 @@ def apply(
         item['seconds'] = round(float(event['seconds']), 1)
     if phase == 'done' and _int(event.get('n')):
         item.update(status='completed', n=_int(event.get('n')), conv=_conv(event.get('conv')))
+        if event.get('summary_of') == 'removed_steps':
+            # ctxproxy 0.32: the chat was too full to show the summary writer the newest steps too
+            item['summary_of'] = 'removed_steps'
     else:
         reason = event.get('reason')
         item.update(status='failed', reason=str(reason)[:300] if reason else 'the summary could not be written')

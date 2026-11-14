@@ -17,6 +17,7 @@
 	export let n = 0;
 	export let conv: string | null = null;
 	export let kind: 'summary' | 'cut' = 'summary';
+	export let removedOnly = false;
 
 	let note: string | null = null;
 	let error = '';
@@ -53,7 +54,9 @@
 				<div class="text-sm font-medium">
 					{kind === 'cut'
 						? $i18n.t('Compaction #{{n}}: context cut without a summary', { n })
-						: $i18n.t('Compaction #{{n}}', { n })}
+						: removedOnly
+							? $i18n.t('Compaction #{{n}}: summary of the removed steps only', { n })
+							: $i18n.t('Compaction #{{n}}', { n })}
 				</div>
 				<div class="text-xs text-gray-500 dark:text-gray-400">
 					{$i18n.t(
