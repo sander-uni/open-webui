@@ -37,12 +37,20 @@ describe('lists', () => {
 
 describe('groups', () => {
 	const state: any = {
-		managed: ['q', 'f', 'toolbox-35b'],
-		ux: { models: { q: { engine: 'ollama' }, f: { engine: 'strata' }, 'toolbox-35b': { engine: 'toolbox' } } }
+		managed: ['q', 'f', 'g', 'toolbox-35b'],
+		ux: {
+			models: {
+				q: { engine: 'ollama' },
+				f: { engine: 'strata' },
+				g: { engine: 'maya' },
+				'toolbox-35b': { engine: 'toolbox' }
+			}
+		}
 	};
 	it('by engine, ChatGPT and cloud apart, presets on their own', () => {
 		expect(groupOf({ value: 'q', model: { id: 'q' } }, state)).toBe('ollama');
 		expect(groupOf({ value: 'f', model: { id: 'f' } }, state)).toBe('strata');
+		expect(groupOf({ value: 'g', model: { id: 'g' } }, state)).toBe('maya');
 		expect(groupOf({ value: 'toolbox-35b', model: { id: 'toolbox-35b' } }, state)).toBe('toolbox');
 		expect(groupOf({ value: 'codex/gpt-6', model: { id: 'codex/gpt-6' } }, state)).toBe('chatgpt');
 		expect(groupOf({ value: 'google/x', model: { id: 'google/x' } }, state)).toBe('cloud');
